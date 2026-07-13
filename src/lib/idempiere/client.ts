@@ -14,7 +14,9 @@ import type { AuthOrganization, AuthRole, AuthSession, AuthWarehouse, QueryOptio
 
 // ── Config ──────────────────────────────────────────────────
 
-const API_BASE = process.env.API_BASE_URL || "http://localhost:8082/api/v1";
+// Use same-origin /api/v1 path — Next.js rewrites proxy to iDempiere container.
+// This avoids CORS issues since browser only sees same-origin requests.
+const API_BASE = "/api/v1";
 
 // ── Core fetch wrapper ──────────────────────────────────────
 
