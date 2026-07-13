@@ -5,5 +5,5 @@
 export const CLIENT_CONFIG = {
   name: process.env.CLIENT_NAME || "ERP Sistematis",
   logo: "/logo.svg",
-  apiBaseUrl: process.env.API_BASE_URL || "http://localhost:8082/api/v1",
+  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "http://localhost:8082/api/v1",
 };

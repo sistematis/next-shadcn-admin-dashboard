@@ -14,9 +14,9 @@ import type { AuthOrganization, AuthRole, AuthSession, AuthWarehouse, QueryOptio
 
 // ── Config ──────────────────────────────────────────────────
 
-// Use same-origin /api/v1 path — Next.js rewrites proxy to iDempiere container.
-// This avoids CORS issues since browser only sees same-origin requests.
-const API_BASE = "/api/v1";
+// iDempiere REST is served via erpzk subdomain with CORS headers in Traefik.
+// NEXT_PUBLIC_API_BASE_URL is inlined at build time.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8082/api/v1";
 
 // ── Core fetch wrapper ──────────────────────────────────────
 
