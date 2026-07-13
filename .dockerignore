@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+README.md
+AGENTS.md
+CONTRIBUTING.md
+LICENSE
+media
+*.md
