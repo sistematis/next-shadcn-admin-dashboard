@@ -1,23 +1,16 @@
 import {
   Banknote,
+  Boxes,
+  Building2,
   Calendar,
   ChartBar,
-  CheckSquare,
-  Fingerprint,
-  Forklift,
-  Gauge,
-  GraduationCap,
-  Kanban,
+  FileText,
   LayoutDashboard,
-  ListTodo,
   Lock,
   type LucideIcon,
-  Mail,
-  MessageSquare,
-  ReceiptText,
-  Server,
-  ShoppingBag,
-  SquareArrowUpRight,
+  Package,
+  ShoppingCart,
+  Truck,
   Users,
 } from "lucide-react";
 
@@ -40,6 +33,8 @@ interface NavItemBase {
   badge?: NavBadge;
   disabled?: boolean;
   newTab?: boolean;
+  /** Role keys allowed to see this item. Empty/undefined = all roles. */
+  roles?: string[];
 }
 
 export interface NavMainLinkItem extends NavItemBase {
@@ -62,158 +57,112 @@ export interface NavGroup {
 export const sidebarItems: NavGroup[] = [
   {
     id: 1,
-    label: "Dashboards",
+    label: "Main",
     items: [
       {
-        id: "default",
-        title: "Default",
+        id: "dashboard",
+        title: "Dashboard",
         url: "/dashboard/default",
         icon: LayoutDashboard,
-      },
-      {
-        id: "crm",
-        title: "CRM",
-        url: "/dashboard/crm",
-        icon: ChartBar,
-      },
-      {
-        id: "finance",
-        title: "Finance",
-        url: "/dashboard/finance",
-        icon: Banknote,
-      },
-      {
-        id: "analytics",
-        title: "Analytics",
-        url: "/dashboard/analytics",
-        icon: Gauge,
-      },
-      {
-        id: "productivity",
-        title: "Productivity",
-        url: "/dashboard/productivity",
-        icon: ListTodo,
-      },
-      {
-        id: "ecommerce",
-        title: "E-commerce",
-        url: "/dashboard/ecommerce",
-        icon: ShoppingBag,
-      },
-      {
-        id: "academy",
-        title: "Academy",
-        url: "/dashboard/academy",
-        icon: GraduationCap,
-      },
-      {
-        id: "logistics",
-        title: "Logistics",
-        url: "/dashboard/logistics",
-        icon: Forklift,
-      },
-      {
-        id: "infrastructure",
-        title: "Infrastructure",
-        url: "/dashboard/infrastructure",
-        icon: Server,
-        badge: "new",
       },
     ],
   },
   {
     id: 2,
-    label: "Pages",
+    label: "Sales",
     items: [
       {
-        id: "email",
-        title: "Email",
-        url: "/dashboard/mail",
-        icon: Mail,
+        id: "business-partners",
+        title: "Business Partners",
+        url: "/dashboard/business-partners",
+        icon: Users,
       },
       {
-        id: "chat",
-        title: "Chat",
-        url: "/dashboard/chat",
-        icon: MessageSquare,
+        id: "sales-orders",
+        title: "Sales Orders",
+        url: "/dashboard/sales-orders",
+        icon: ShoppingCart,
       },
       {
-        id: "calendar",
-        title: "Calendar",
-        url: "/dashboard/calendar",
-        icon: Calendar,
+        id: "invoices",
+        title: "Invoices",
+        url: "/dashboard/invoices",
+        icon: FileText,
+      },
+    ],
+  },
+  {
+    id: 3,
+    label: "Procurement",
+    items: [
+      {
+        id: "purchase-orders",
+        title: "Purchase Orders",
+        url: "/dashboard/purchase-orders",
+        icon: Truck,
+      },
+    ],
+  },
+  {
+    id: 4,
+    label: "Inventory",
+    items: [
+      {
+        id: "products",
+        title: "Products",
+        url: "/dashboard/products",
+        icon: Package,
       },
       {
-        id: "kanban",
-        title: "Kanban",
-        url: "/dashboard/kanban",
-        icon: Kanban,
+        id: "warehouses",
+        title: "Warehouses",
+        url: "/dashboard/warehouses",
+        icon: Boxes,
+      },
+    ],
+  },
+  {
+    id: 5,
+    label: "Finance",
+    items: [
+      {
+        id: "payments",
+        title: "Payments",
+        url: "/dashboard/payments",
+        icon: Banknote,
       },
       {
-        id: "tasks",
-        title: "Tasks",
-        url: "/dashboard/tasks",
-        icon: CheckSquare,
-        badge: "new",
+        id: "financial-reports",
+        title: "Financial Reports",
+        url: "/dashboard/financial-reports",
+        icon: ChartBar,
+      },
+    ],
+  },
+  {
+    id: 6,
+    label: "Administration",
+    items: [
+      {
+        id: "organization",
+        title: "Organization",
+        url: "/dashboard/organization",
+        icon: Building2,
+        roles: ["admin", "system"],
       },
       {
-        id: "invoice",
-        title: "Invoice",
-        url: "/dashboard/invoice",
-        icon: ReceiptText,
+        id: "roles",
+        title: "Roles & Permissions",
+        url: "/dashboard/roles",
+        icon: Lock,
+        roles: ["admin", "system"],
       },
       {
         id: "users",
         title: "Users",
         url: "/dashboard/users",
         icon: Users,
-      },
-      {
-        id: "roles",
-        title: "Roles",
-        url: "/dashboard/roles",
-        icon: Lock,
-      },
-      {
-        id: "authentication",
-        title: "Authentication",
-        icon: Fingerprint,
-        subItems: [
-          { id: "auth-login-v1", title: "Login v1", url: "/auth/v1/login", newTab: true },
-          { id: "auth-login-v2", title: "Login v2", url: "/auth/v2/login", newTab: true },
-          { id: "auth-register-v1", title: "Register v1", url: "/auth/v1/register", newTab: true },
-          { id: "auth-register-v2", title: "Register v2", url: "/auth/v2/register", newTab: true },
-        ],
-      },
-    ],
-  },
-  {
-    id: 3,
-    label: "Legacy",
-    items: [
-      {
-        id: "legacy-dashboards",
-        title: "Dashboards",
-        subItems: [
-          { id: "legacy-default", title: "Default V1", url: "/dashboard/default-v1" },
-          { id: "legacy-crm", title: "CRM V1", url: "/dashboard/crm-v1" },
-          { id: "legacy-finance", title: "Finance V1", url: "/dashboard/finance-v1" },
-          { id: "legacy-analytics", title: "Analytics V1", url: "/dashboard/analytics-v1" },
-        ],
-      },
-    ],
-  },
-  {
-    id: 4,
-    label: "Misc",
-    items: [
-      {
-        id: "others",
-        title: "Others",
-        url: "/dashboard/coming-soon",
-        icon: SquareArrowUpRight,
-        badge: "soon",
-        disabled: true,
+        roles: ["admin", "system"],
       },
     ],
   },
