@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -9,10 +9,11 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from "@/lib/idempiere";
+import { clearLoginPrefs, getLoginPrefs, type SavedLoginPrefs, saveLoginPrefs, useAuth } from "@/lib/idempiere";
 import type { AuthOrganization, AuthRole, AuthWarehouse } from "@/lib/idempiere/types";
 
 // ── Step types ──────────────────────────────────────────────
@@ -30,10 +31,11 @@ type CredentialsValues = z.infer<typeof credentialsSchema>;
 
 export function LoginForm() {
   const router = useRouter();
-  const { authenticate, selectSession, fetchRoles, fetchOrganizations, fetchWarehouses } = useAuth();
+  const { authenticate, selectSession, fetchRoles, fetchOrganizations, fetchWarehouses, setRemember } = useAuth();
 
   const [step, setStep] = useState<LoginStep>("credentials");
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Provisional token from step 1
   const [provToken, setProvToken] = useState<string>("");
@@ -48,11 +50,28 @@ export function LoginForm() {
   const [selectedOrg, setSelectedOrg] = useState<number | null>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<number | null>(null);
 
-  // ── Step 1: authenticate ──────────────────────────────────
+  // ── Form ──────────────────────────────────────────────────
 
   const credentialsForm = useForm<CredentialsValues>({
     defaultValues: { username: "", password: "" },
   });
+
+  // ponytail: restore saved login prefs when Remember Me was previously enabled
+  const savedPrefsRef = useRef<SavedLoginPrefs | null>(null);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  useEffect(() => {
+    if (prefsLoaded) return;
+    const prefs = getLoginPrefs();
+    if (!prefs) {
+      setPrefsLoaded(true);
+      return;
+    }
+    setRememberMe(true);
+    credentialsForm.setValue("username", prefs.username);
+    credentialsForm.setValue("password", prefs.password);
+    savedPrefsRef.current = prefs;
+    setPrefsLoaded(true);
+  }, [prefsLoaded, credentialsForm]);
 
   const onCredentialsSubmit = useCallback(
     async (data: CredentialsValues) => {
@@ -73,6 +92,25 @@ export function LoginForm() {
           setSelectedClient(clientId);
           const rolesData = await fetchRoles(clientId, result.token);
           setRoles(rolesData);
+
+          // ponytail: auto-select saved session params if Remember Me
+          const prefs = savedPrefsRef.current;
+          if (prefs && prefs.clientId === clientId) {
+            const role = rolesData.find((r) => r.id === prefs.roleId);
+            if (role) {
+              setSelectedRole(prefs.roleId);
+              const orgsData = await fetchOrganizations(prefs.clientId, prefs.roleId, result.token);
+              setOrgs(orgsData);
+              const org = orgsData.find((o) => o.id === prefs.organizationId);
+              if (org) {
+                setSelectedOrg(prefs.organizationId);
+                const whData = await fetchWarehouses(prefs.clientId, prefs.roleId, prefs.organizationId, result.token);
+                setWarehouses(whData);
+                const wh = whData.find((w) => w.id === prefs.warehouseId);
+                if (wh) setSelectedWarehouse(prefs.warehouseId);
+              }
+            }
+          }
         }
 
         setStep("session");
@@ -84,7 +122,7 @@ export function LoginForm() {
         setLoading(false);
       }
     },
-    [authenticate, fetchRoles],
+    [authenticate, fetchRoles, fetchOrganizations, fetchWarehouses],
   );
 
   // ── Step 2: client selection → load roles ─────────────────
@@ -167,12 +205,35 @@ export function LoginForm() {
 
     setLoading(true);
     try {
+      const clientName = clients.find((c) => c.id === selectedClient)?.name ?? "";
+      const roleName = roles.find((r) => r.id === selectedRole)?.name ?? "";
+      const orgName = orgs.find((o) => o.id === selectedOrg)?.name ?? "";
+      const warehouseName = warehouses.find((w) => w.id === selectedWarehouse)?.name ?? "";
       await selectSession(provToken, {
         clientId: selectedClient,
         roleId: selectedRole,
         organizationId: selectedOrg,
         warehouseId: selectedWarehouse,
+        userName: credentialsForm.getValues("username"),
+        clientName,
+        roleName,
+        orgName,
+        warehouseName,
       });
+      setRemember(rememberMe);
+      // ponytail: save or clear login prefs based on Remember Me
+      if (rememberMe) {
+        saveLoginPrefs({
+          username: credentialsForm.getValues("username"),
+          password: credentialsForm.getValues("password"),
+          clientId: selectedClient,
+          roleId: selectedRole,
+          organizationId: selectedOrg,
+          warehouseId: selectedWarehouse,
+        });
+      } else {
+        clearLoginPrefs();
+      }
       toast.success("Login successful");
       router.push("/dashboard");
     } catch (err) {
@@ -182,7 +243,22 @@ export function LoginForm() {
     } finally {
       setLoading(false);
     }
-  }, [provToken, selectedClient, selectedRole, selectedOrg, selectedWarehouse, selectSession, router]);
+  }, [
+    provToken,
+    selectedClient,
+    selectedRole,
+    selectedOrg,
+    selectedWarehouse,
+    selectSession,
+    router,
+    rememberMe,
+    credentialsForm,
+    setRemember,
+    warehouses.find,
+    roles.find,
+    orgs.find,
+    clients.find,
+  ]);
 
   // ── Render: Credentials step ──────────────────────────────
 
@@ -227,6 +303,12 @@ export function LoginForm() {
             )}
           />
         </FieldGroup>
+        <div className="flex items-center gap-2">
+          <Checkbox id="remember-me" checked={rememberMe} onCheckedChange={(v) => setRememberMe(v === true)} />
+          <label htmlFor="remember-me" className="cursor-pointer select-none text-sm">
+            Remember me
+          </label>
+        </div>
         <Button className="w-full" type="submit" disabled={loading}>
           {loading ? "Authenticating..." : "Login"}
         </Button>

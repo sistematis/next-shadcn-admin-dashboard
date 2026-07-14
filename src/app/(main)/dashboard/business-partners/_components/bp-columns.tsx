@@ -14,121 +14,76 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+import type { WindowField } from "@/lib/idempiere/types";
 
 import type { BPRow } from "./use-business-partners";
 
-export const bpColumns: ColumnDef<BPRow>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <div className="flex items-center justify-center">
-        <Checkbox
-          aria-label="Select all"
-          checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        />
-      </div>
-    ),
-    cell: ({ row }) => (
-      <div className="flex items-center justify-center">
-        <Checkbox
-          aria-label={`Select ${row.original.name}`}
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-        />
-      </div>
-    ),
-    enableHiding: false,
-    enableSorting: false,
-  },
-  {
-    accessorKey: "name",
-    header: "Name",
-    cell: ({ row }) => (
-      <div className="min-w-0">
-        <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
-        <div className="truncate text-muted-foreground text-xs">{row.original.value}</div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "value",
-    header: "Search Key",
-    filterFn: "includesString",
-  },
-  {
+// Columns that should always be visible, never hidden
+const _ALWAYS_VISIBLE = new Set(["select", "actions"]);
+
+// Columns excluded from the "Columns" dropdown (internal/helper columns)
+const HIDDEN_FROM_PICKER = new Set([
+  "search",
+  "select",
+  "actions",
+  "C_BPartner_UU",
+  "C_BPartner_ID",
+  "AD_Client_ID",
+  "AD_Org_ID",
+]);
+
+/** Generate column defs from window field metadata + hardcoded chrome (select, search, actions) */
+export function buildColumns(fields: WindowField[]): ColumnDef<BPRow>[] {
+  const cols: ColumnDef<BPRow>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <div className="flex items-center justify-center">
+          <Checkbox
+            aria-label="Select all"
+            checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && "indeterminate")}
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          />
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <Checkbox
+            aria-label={`Select row`}
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+          />
+        </div>
+      ),
+      enableHiding: false,
+      enableSorting: false,
+    },
+  ];
+
+  for (const f of fields) {
+    if (HIDDEN_FROM_PICKER.has(f.columnName)) continue;
+    const col = buildColumnDef(f);
+    if (col) cols.push(col);
+  }
+
+  // Search helper column (hidden, used by the search box filter)
+  cols.push({
     id: "search",
-    accessorFn: (row) => `${row.name} ${row.value}`,
+    accessorFn: (row) => `${row.Name ?? ""} ${row.Value ?? ""}`,
     filterFn: "includesString",
     enableHiding: true,
-  },
-  {
-    accessorKey: "group",
-    header: "Group",
-    filterFn: "equalsString",
-    cell: ({ row }) => <span className="text-sm">{row.original.group}</span>,
-  },
-  {
-    accessorKey: "isCustomer",
-    header: "Customer",
-    filterFn: "equalsString",
-    cell: ({ row }) =>
-      row.original.isCustomer ? (
-        <Badge variant="outline" className="gap-1 text-emerald-600">
-          <Check className="size-3" /> Customer
-        </Badge>
-      ) : null,
-  },
-  {
-    accessorKey: "isVendor",
-    header: "Vendor",
-    filterFn: "equalsString",
-    cell: ({ row }) =>
-      row.original.isVendor ? (
-        <Badge variant="outline" className="gap-1 text-blue-600">
-          <Check className="size-3" /> Vendor
-        </Badge>
-      ) : null,
-  },
-  {
-    accessorKey: "creditUsed",
-    header: "Credit Used",
-    cell: ({ row }) => (
-      <div className="text-sm tabular-nums">
-        {row.original.creditUsed.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-        {row.original.creditLimit > 0 && (
-          <span className="text-muted-foreground text-xs">
-            {" "}
-            / {row.original.creditLimit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </span>
-        )}
-      </div>
-    ),
-  },
-  {
-    accessorKey: "active",
-    header: "Status",
-    filterFn: "equalsString",
-    cell: ({ row }) => (
-      <Badge
-        variant="outline"
-        className={cn("gap-1.5", row.original.active ? "text-emerald-600" : "text-muted-foreground")}
-      >
-        <span className={cn("size-1.5 rounded-full", row.original.active ? "bg-emerald-500" : "bg-muted-foreground")} />
-        {row.original.active ? "Active" : "Inactive"}
-      </Badge>
-    ),
-  },
-  {
+    enableSorting: false,
+  });
+
+  cols.push({
     id: "actions",
     header: () => <div className="text-right">Actions</div>,
-    cell: ({ row }) => (
+    cell: () => (
       <div className="text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
-              aria-label={`Open actions for ${row.original.name}`}
+              aria-label="Open actions"
               className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
               size="icon-sm"
               variant="ghost"
@@ -149,5 +104,94 @@ export const bpColumns: ColumnDef<BPRow>[] = [
     ),
     enableHiding: false,
     enableSorting: false,
-  },
-];
+  });
+
+  return cols;
+}
+
+function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
+  const { columnName: key, Name: label } = f;
+
+  // ponytail: all data columns are sortable by default
+  const sortingEnabled = { enableSorting: true };
+
+  // Boolean columns → check badge
+  if (key.startsWith("Is")) {
+    return {
+      accessorKey: key,
+      header: label,
+      filterFn: "equalsString",
+      ...sortingEnabled,
+      cell: ({ row }) => {
+        const val = row.original[key];
+        return val ? (
+          <Badge variant="outline" className="gap-1 text-emerald-600">
+            <Check className="size-3" /> {label}
+          </Badge>
+        ) : null;
+      },
+    };
+  }
+
+  // Credit / money columns → formatted
+  if (key === "SO_CreditUsed" || key === "SO_CreditLimit" || key === "TotalOpenBalance") {
+    return {
+      accessorKey: key,
+      header: label,
+      ...sortingEnabled,
+      cell: ({ row }) => {
+        const val = Number(row.original[key] ?? 0);
+        return <div className="text-sm tabular-nums">{val.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>;
+      },
+    };
+  }
+
+  // Name → primary display (name + search key subtext)
+  if (key === "Name") {
+    return {
+      accessorKey: key,
+      header: label,
+      ...sortingEnabled,
+      cell: ({ row }) => (
+        <div className="min-w-0">
+          <div className="truncate font-medium text-foreground text-sm">{String(row.original[key] ?? "(unnamed)")}</div>
+          <div className="truncate text-muted-foreground text-xs">{String(row.original.Value ?? "")}</div>
+        </div>
+      ),
+    };
+  }
+
+  // FK reference columns → show identifier
+  if (f.reference) {
+    return {
+      accessorKey: key,
+      header: label,
+      filterFn: "equalsString",
+      ...sortingEnabled,
+      sortingFn: (rowA, rowB) => {
+        // ponytail: sort by identifier string for FK columns
+        const a = (rowA.original[key] as { identifier?: string } | undefined)?.identifier ?? "";
+        const b = (rowB.original[key] as { identifier?: string } | undefined)?.identifier ?? "";
+        return a.localeCompare(b);
+      },
+      cell: ({ row }) => {
+        const val = row.original[key] as { identifier?: string } | undefined;
+        return <span className="text-sm">{val?.identifier ?? "-"}</span>;
+      },
+    };
+  }
+
+  // Scalar fallback
+  return {
+    accessorKey: key,
+    header: label,
+    filterFn: "includesString",
+    ...sortingEnabled,
+    cell: ({ row }) => <span className="text-sm">{String(row.original[key] ?? "")}</span>,
+  };
+}
+
+/** Fields safe to show in the Columns picker dropdown */
+export function getPickableFields(fields: WindowField[]): WindowField[] {
+  return fields.filter((f) => !HIDDEN_FROM_PICKER.has(f.columnName));
+}

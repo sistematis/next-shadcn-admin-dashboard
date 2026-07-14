@@ -5,52 +5,43 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/lib/idempiere/auth-context";
-import { getModels } from "@/lib/idempiere/client";
-import type { BusinessPartner } from "@/lib/idempiere/types";
+import { getModels, getWindowFields } from "@/lib/idempiere/client";
+import type { WindowField } from "@/lib/idempiere/types";
 
-export type BPRow = {
-  id: number;
-  name: string;
-  value: string;
-  isCustomer: boolean;
-  isVendor: boolean;
-  group: string;
-  creditLimit: number;
-  creditUsed: number;
-  active: boolean;
-};
+// ponytail: BPRow is now a generic bag — window metadata drives column defs
+export type BPRow = Record<string, unknown> & { id: number };
+
+// ponytail: fetch all columns from c_bpartner — window metadata controls visibility, not $select.
+// Trade-off: slightly larger payload, but avoids refetch when columns are toggled.
 
 export function useBusinessPartners() {
   const { token } = useAuth();
   const [data, setData] = React.useState<BPRow[]>([]);
+  const [fields, setFields] = React.useState<WindowField[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [totalCount, setTotalCount] = React.useState(0);
 
   const fetchData = React.useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      setError("Not authenticated");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const resp = await getModels<BusinessPartner>("c_bpartner", token, {
-        select: "id,uid,Name,Value,IsCustomer,IsVendor,IsActive,SO_CreditLimit,SO_CreditUsed,C_BP_Group_ID",
-        orderby: "Name asc",
-        top: 100,
-      });
+      // Fetch window field metadata + records in parallel
+      const [fieldData, resp] = await Promise.all([
+        getWindowFields("business-partner", "business-partner", token),
+        getModels<Record<string, unknown>>("c_bpartner", token, {
+          orderby: "Name asc",
+          top: 100,
+        }),
+      ]);
+      setFields(fieldData);
       setTotalCount(resp["row-count"] ?? resp.records.length);
-      setData(
-        resp.records.map((bp) => ({
-          id: bp.id,
-          name: bp.Name ?? "(unnamed)",
-          value: bp.Value ?? "",
-          isCustomer: bp.IsCustomer ?? false,
-          isVendor: bp.IsVendor ?? false,
-          group: bp.C_BP_Group_ID?.identifier ?? "-",
-          creditLimit: bp.SO_CreditLimit ?? 0,
-          creditUsed: bp.SO_CreditUsed ?? 0,
-          active: bp.IsActive ?? false,
-        })),
-      );
+      setData(resp.records as BPRow[]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       setError(msg);
@@ -64,5 +55,5 @@ export function useBusinessPartners() {
     void fetchData();
   }, [fetchData]);
 
-  return { data, loading, error, totalCount, refetch: fetchData };
+  return { data, fields, loading, error, totalCount, refetch: fetchData };
 }

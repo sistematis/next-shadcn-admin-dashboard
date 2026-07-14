@@ -38,6 +38,12 @@ export interface AuthSession {
   language: string;
   token: string;
   refresh_token: string;
+  // ponytail: display info from login form, not from API response
+  userName?: string;
+  clientName?: string;
+  roleName?: string;
+  orgName?: string;
+  warehouseName?: string;
 }
 
 // ── CRUD response types ─────────────────────────────────────
@@ -113,6 +119,27 @@ export interface SalesOrderLine {
   PriceActual?: number;
   LineNetAmt?: number;
   C_UOM_ID?: ReferenceField;
+}
+
+// ── Window metadata ─────────────────────────────────────────
+
+/** Field definition from /windows/{window}/tabs/{tab}/fields */
+export interface WindowField {
+  id: number;
+  Name: string;
+  Description?: string;
+  columnName: string; // extracted from AD_Column_ID.identifier
+  /** Raw FK reference, or null for scalar columns */
+  reference?: { id: number; identifier: string; "model-name"?: string };
+}
+
+/** Extract columnName from the AD_Column_ID.identifier ("ColumnName_DisplayName") */
+export function getColumnId(field: { AD_Column_ID?: unknown }): string {
+  const ref = field.AD_Column_ID as { identifier?: string } | undefined;
+  if (!ref?.identifier) return "";
+  // ponytail: identifier is always "{columnName}_{displayName}" — last _ splits them
+  const idx = ref.identifier.lastIndexOf("_");
+  return idx > 0 ? ref.identifier.slice(0, idx) : ref.identifier;
 }
 
 // ── Query builder options ───────────────────────────────────

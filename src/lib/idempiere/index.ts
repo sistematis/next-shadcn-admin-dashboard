@@ -1,4 +1,11 @@
-export { AuthProvider, useAuth } from "./auth-context";
+export {
+  AuthProvider,
+  clearLoginPrefs,
+  getLoginPrefs,
+  type SavedLoginPrefs,
+  saveLoginPrefs,
+  useAuth,
+} from "./auth-context";
 export {
   createModel,
   deleteModel,

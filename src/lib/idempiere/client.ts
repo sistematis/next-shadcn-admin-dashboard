@@ -10,7 +10,16 @@
  *   5. PUT /auth/tokens with {clientId, roleId, organizationId, warehouseId, language} → final token
  */
 
-import type { AuthOrganization, AuthRole, AuthSession, AuthWarehouse, QueryOptions, QueryResponse } from "./types";
+import type {
+  AuthOrganization,
+  AuthRole,
+  AuthSession,
+  AuthWarehouse,
+  QueryOptions,
+  QueryResponse,
+  WindowField,
+} from "./types";
+import { getColumnId } from "./types";
 
 // ── Config ──────────────────────────────────────────────────
 
@@ -21,8 +30,35 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8082/
 // ── Core fetch wrapper ──────────────────────────────────────
 
 async function apiRequest<T>(path: string, options?: RequestInit & { token?: string }): Promise<T> {
-  const token = options?.token;
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await doFetch(path, options);
+
+  // ponytail: 401 → try refresh once, retry original, if refresh fails then logout
+  if (res.status === 401 && typeof window !== "undefined") {
+    const refreshed = await tryRefresh();
+    if (refreshed) return doFetch(path, options) as unknown as Promise<T>;
+    // refresh failed — force logout (keep REMEMBER_KEY + LOGIN_PREFS_KEY)
+    sessionStorage.removeItem("erp_token");
+    sessionStorage.removeItem("erp_session");
+    localStorage.removeItem("erp_token");
+    localStorage.removeItem("erp_session");
+    if (!window.location.pathname.startsWith("/auth")) {
+      window.location.href = "/auth/v1/login";
+    }
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`iDempiere API ${res.status}: ${text}`);
+  }
+
+  const text = await res.text();
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+async function doFetch(path: string, options?: RequestInit & { token?: string }) {
+  // ponytail: prefer module-level token (always current after refresh) over stale caller token
+  const token = getCurrentToken() ?? options?.token;
+  return fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -30,15 +66,63 @@ async function apiRequest<T>(path: string, options?: RequestInit & { token?: str
       ...options?.headers,
     },
   });
+}
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`iDempiere API ${res.status}: ${text}`);
+// ponytail: token kept in module-level var, synced from auth-context on each login
+let _token: string | null = null;
+let _refreshToken: string | null = null;
+let _refreshing: Promise<boolean> | null = null;
+
+export function setTokens(token: string | null, refreshToken: string | null) {
+  _token = token;
+  _refreshToken = refreshToken;
+}
+
+function getCurrentToken() {
+  return _token;
+}
+
+// ponytail: single-flight refresh — concurrent 401s share one refresh call
+async function tryRefresh(): Promise<boolean> {
+  // biome-ignore lint/nursery/noMisusedPromises: single-flight pattern — truthiness check is intentional
+  if (_refreshing) return _refreshing;
+  const p = doRefresh();
+  _refreshing = p;
+  try {
+    return await p;
+  } finally {
+    _refreshing = null;
   }
+}
 
-  // Some endpoints (DELETE) return empty body
-  const text = await res.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+async function doRefresh(): Promise<boolean> {
+  if (!_refreshToken) return false;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: _refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    setTokens(data.token, data.refresh_token);
+    // persist new token to the correct storage
+    if (typeof window !== "undefined") {
+      const useLocal = localStorage.getItem("erp_remember") === "true";
+      const s = useLocal ? localStorage : sessionStorage;
+      s.setItem("erp_token", JSON.stringify(data.token));
+      const raw = s.getItem("erp_session");
+      if (raw) {
+        const sess = JSON.parse(raw);
+        sess.token = data.token;
+        sess.refresh_token = data.refresh_token;
+        s.setItem("erp_session", JSON.stringify(sess));
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Auth: Normal Login Flow ─────────────────────────────────
@@ -53,14 +137,17 @@ export async function initLogin(userName: string, password: string) {
 
 /** GET /auth/roles?client=X — get available roles for a client */
 export async function getRoles(clientId: number, token: string): Promise<AuthRole[]> {
-  const data = await apiRequest<AuthRole[]>(`/auth/roles?client=${clientId}`, { token });
-  return data;
+  const data = await apiRequest<{ roles: AuthRole[] }>(`/auth/roles?client=${clientId}`, { token });
+  return data.roles;
 }
 
 /** GET /auth/organizations?client=X&role=Y — get organizations for role */
 export async function getOrganizations(clientId: number, roleId: number, token: string): Promise<AuthOrganization[]> {
-  const data = await apiRequest<AuthOrganization[]>(`/auth/organizations?client=${clientId}&role=${roleId}`, { token });
-  return data;
+  const data = await apiRequest<{ organizations: AuthOrganization[] }>(
+    `/auth/organizations?client=${clientId}&role=${roleId}`,
+    { token },
+  );
+  return data.organizations;
 }
 
 /** GET /auth/warehouses?client=X&role=Y&organization=Z — get warehouses */
@@ -70,11 +157,11 @@ export async function getWarehouses(
   organizationId: number,
   token: string,
 ): Promise<AuthWarehouse[]> {
-  const data = await apiRequest<AuthWarehouse[]>(
+  const data = await apiRequest<{ warehouses: AuthWarehouse[] }>(
     `/auth/warehouses?client=${clientId}&role=${roleId}&organization=${organizationId}`,
     { token },
   );
-  return data;
+  return data.warehouses;
 }
 
 /** Step 3: PUT /auth/tokens — finalize login with selected session params */
@@ -190,6 +277,32 @@ export async function runProcess<T>(process: string, params: Record<string, unkn
     body: JSON.stringify(params),
     token,
   });
+}
+
+// ── Window metadata ─────────────────────────────────────────
+
+/**
+ * GET /windows/{window}/tabs/{tab}/fields — fetch field definitions from iDempiere window metadata.
+ * Returns columns with extracted columnName (usable as $select values).
+ */
+export async function getWindowFields(windowSlug: string, tabSlug: string, token: string): Promise<WindowField[]> {
+  const data = await apiRequest<{
+    fields: Array<{
+      id: number;
+      Name: string;
+      Description?: string;
+      AD_Column_ID?: { identifier?: string; id: number; "model-name"?: string };
+    }>;
+  }>(`/windows/${windowSlug}/tabs/${tabSlug}/fields`, { token });
+  return data.fields.map((f) => ({
+    id: f.id,
+    Name: f.Name,
+    Description: f.Description,
+    columnName: getColumnId(f),
+    reference: f.AD_Column_ID?.identifier
+      ? { id: f.AD_Column_ID.id, identifier: f.AD_Column_ID.identifier, "model-name": f.AD_Column_ID["model-name"] }
+      : undefined,
+  }));
 }
 
 export { apiRequest, buildQueryString };

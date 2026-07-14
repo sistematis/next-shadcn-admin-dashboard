@@ -4,6 +4,7 @@
 import type { MouseEvent } from "react";
 
 import { flexRender, type Table as TableType } from "@tanstack/react-table";
+import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
 
 import {
   Pagination,
@@ -47,7 +48,24 @@ export function BPTable({ table }: { table: TableType<BPRow> }) {
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <TableHead key={header.id} className="py-4 font-normal">
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                      <button
+                        type="button"
+                        className="-ml-1 flex items-center gap-1 hover:text-foreground"
+                        onClick={() => header.column.toggleSorting(header.column.getIsSorted() === "asc")}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getIsSorted() === "asc" ? (
+                          <ChevronUp className="size-3" />
+                        ) : header.column.getIsSorted() === "desc" ? (
+                          <ChevronDown className="size-3" />
+                        ) : (
+                          <ArrowUpDown className="size-3 opacity-50" />
+                        )}
+                      </button>
+                    ) : (
+                      flexRender(header.column.columnDef.header, header.getContext())
+                    )}
                   </TableHead>
                 ))}
               </TableRow>

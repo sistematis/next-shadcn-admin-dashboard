@@ -2,7 +2,6 @@ import {
   Banknote,
   Boxes,
   Building2,
-  Calendar,
   ChartBar,
   FileText,
   LayoutDashboard,

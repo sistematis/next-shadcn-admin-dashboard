@@ -12,41 +12,149 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Download, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Download, Plus, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { bpColumns } from "./bp-columns";
+import { buildColumns, getPickableFields } from "./bp-columns";
 import { BPTable } from "./bp-table";
 import { useBusinessPartners } from "./use-business-partners";
 
 const statusFilters = ["All", "Active", "Inactive"];
 
+const DEFAULT_VISIBLE_FIELDS = new Set([
+  "Name",
+  "IsCustomer",
+  "IsVendor",
+  "C_BP_Group_ID",
+  "SO_CreditUsed",
+  "IsActive",
+]);
+const BP_CONFIG_KEY = "erp_bp_table_config";
+
+interface SavedConfig {
+  columnVisibility: VisibilityState;
+  columnOrder: string[];
+  sorting: SortingState;
+}
+
+function loadConfig(): SavedConfig | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(BP_CONFIG_KEY);
+  return raw ? (JSON.parse(raw) as SavedConfig) : null;
+}
+
+function saveConfig(cfg: SavedConfig) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(BP_CONFIG_KEY, JSON.stringify(cfg));
+}
+
 export function BusinessPartners() {
-  const { data, loading, totalCount } = useBusinessPartners();
+  const { data, fields, loading, totalCount } = useBusinessPartners();
+
+  const columns = React.useMemo(() => buildColumns(fields), [fields]);
+  const pickableFields = React.useMemo(() => getPickableFields(fields), [fields]);
 
   const [rowSelection, setRowSelection] = React.useState({});
-  const [sorting, setSorting] = React.useState<SortingState>([{ id: "name", desc: false }]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
-    value: false,
-  });
-  const [pagination] = React.useState({ pageIndex: 0, pageSize: 10 });
+  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 });
+
+  // ponytail: column visibility + order + sorting persisted via useTableConfig hook
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
+  const [sorting, setSorting] = React.useState<SortingState>([{ id: "Name", desc: false }]);
+  const [configDirty, setConfigDirty] = React.useState(false);
+
+  const loaded = React.useRef(false);
+  React.useEffect(() => {
+    if (fields.length === 0 || loaded.current) return;
+    loaded.current = true;
+    const saved = loadConfig();
+    if (saved) {
+      saved.columnVisibility.search = false;
+      setColumnVisibility(saved.columnVisibility);
+      if (saved.columnOrder.length) setColumnOrder(saved.columnOrder);
+      if (saved.sorting.length) setSorting(saved.sorting);
+      return;
+    }
+    const vis: VisibilityState = {};
+    for (const f of fields) {
+      if (f.columnName && !DEFAULT_VISIBLE_FIELDS.has(f.columnName)) vis[f.columnName] = false;
+    }
+    vis.search = false;
+    setColumnVisibility(vis);
+  }, [fields]);
+
+  const markDirty = React.useCallback(() => {
+    setConfigDirty(true);
+  }, []);
+
+  const onVisibilityChange = React.useCallback(
+    (updater: VisibilityState | ((prev: VisibilityState) => VisibilityState)) => {
+      setColumnVisibility(updater);
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  const onOrderChange = React.useCallback(
+    (updater: string[] | ((prev: string[]) => string[])) => {
+      setColumnOrder(updater);
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  const onSortingChange = React.useCallback(
+    (updater: SortingState | ((prev: SortingState) => SortingState)) => {
+      setSorting(updater);
+      markDirty();
+    },
+    [markDirty],
+  );
+
+  function handleSave() {
+    saveConfig({ columnVisibility, columnOrder, sorting });
+    setConfigDirty(false);
+    toast.success("Table layout saved");
+  }
+
+  function handleReset() {
+    localStorage.removeItem(BP_CONFIG_KEY);
+    const vis: VisibilityState = {};
+    for (const f of fields) {
+      if (f.columnName && !DEFAULT_VISIBLE_FIELDS.has(f.columnName)) vis[f.columnName] = false;
+    }
+    vis.search = false;
+    setColumnVisibility(vis);
+    setColumnOrder([]);
+    setSorting([{ id: "Name", desc: false }]);
+    setConfigDirty(true);
+    toast.info("Reset to defaults — click Save to persist");
+  }
 
   const table = useReactTable({
     data,
-    columns: bpColumns,
-    state: { rowSelection, sorting, columnFilters, columnVisibility, pagination },
+    columns,
+    state: { rowSelection, sorting, columnFilters, columnVisibility, columnOrder, pagination },
+    onPaginationChange: setPagination,
     getRowId: (row) => row.id.toString(),
     autoResetPageIndex: false,
     enableRowSelection: true,
+    enableColumnPinning: true,
     onRowSelectionChange: setRowSelection,
-    onSortingChange: setSorting,
+    onSortingChange: onSortingChange,
     onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: onVisibilityChange,
+    onColumnOrderChange: onOrderChange,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -61,6 +169,66 @@ export function BusinessPartners() {
     table.setPageIndex(0);
   }
 
+  function handleExport() {
+    const rows = table.getFilteredRowModel().rows;
+    if (!rows.length) return;
+    const visibleCols = table
+      .getVisibleLeafColumns()
+      .filter((c) => c.id !== "select" && c.id !== "actions" && c.id !== "search");
+    const header = visibleCols.map((c) => c.id).join(",");
+    const body = rows
+      .map((r) =>
+        visibleCols
+          .map((c) => {
+            const val = r.original[c.id];
+            const str =
+              typeof val === "object" && val !== null
+                ? ((val as { identifier?: string }).identifier ?? "")
+                : String(val ?? "");
+            return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+          })
+          .join(","),
+      )
+      .join("\n");
+    const blob = new Blob([`${header}\n${body}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "business-partners.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ponytail: search filter for the column config popover — helps when table has 30+ fields
+  const [colSearch, setColSearch] = React.useState("");
+  const filteredPickable = React.useMemo(() => {
+    if (!colSearch) return pickableFields;
+    const q = colSearch.toLowerCase();
+    return pickableFields.filter((f) => f.Name.toLowerCase().includes(q) || f.columnName.toLowerCase().includes(q));
+  }, [pickableFields, colSearch]);
+
+  // ponytail: reorder visible columns via ↑/↓ — sorted by current columnOrder so it reflects actual display order
+  const visibleFields = React.useMemo(() => {
+    const visible = pickableFields.filter((f) => table.getColumn(f.columnName)?.getIsVisible());
+    if (columnOrder.length === 0) return visible;
+    return [...visible].sort((a, b) => {
+      const ai = columnOrder.indexOf(a.columnName);
+      const bi = columnOrder.indexOf(b.columnName);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+  }, [pickableFields, table, columnOrder]);
+
+  function moveColumn(idx: number, dir: -1 | 1) {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= visibleFields.length) return;
+    const reordered = [...visibleFields];
+    [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
+    const visibleIds = reordered.map((f) => f.columnName);
+    const hiddenIds = pickableFields.filter((f) => !visibleIds.includes(f.columnName)).map((f) => f.columnName);
+    setColumnOrder(["select", ...visibleIds, ...hiddenIds, "actions", "search"]);
+    markDirty();
+  }
+
   return (
     <Card>
       <CardHeader className="border-b has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
@@ -72,24 +240,112 @@ export function BusinessPartners() {
           Manage customers, vendors, and business partner relationships.
         </CardDescription>
         <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
-          <InputGroup className="h-7 w-full md:w-64">
-            <InputGroupAddon align="inline-start">
-              <Search className="size-3.5" />
-            </InputGroupAddon>
-            <InputGroupInput
-              className="h-7"
-              placeholder="Search partners..."
-              value={searchQuery}
-              onChange={(event) => {
-                table.getColumn("search")?.setFilterValue(event.target.value || undefined);
-                table.setPageIndex(0);
-              }}
-            />
-          </InputGroup>
-          <Button variant="outline" size="sm">
-            <SlidersHorizontal /> Columns
-          </Button>
-          <Button variant="outline" size="sm">
+          <Input
+            className="h-7 w-full md:w-64"
+            placeholder="Search partners..."
+            value={searchQuery}
+            onChange={(event) => {
+              table.getColumn("search")?.setFilterValue(event.target.value || undefined);
+              table.setPageIndex(0);
+            }}
+          />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <SlidersHorizontal /> Configure
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-0">
+              <Tabs defaultValue="visibility">
+                <TabsList className="w-full">
+                  <TabsTrigger value="visibility" className="flex-1">
+                    Visibility
+                  </TabsTrigger>
+                  <TabsTrigger value="order" className="flex-1">
+                    Order
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="visibility" className="p-3">
+                  <Input
+                    className="mb-2 h-7"
+                    placeholder="Search columns..."
+                    value={colSearch}
+                    onChange={(e) => setColSearch(e.target.value)}
+                  />
+                  <ScrollArea className="h-64 pr-2">
+                    <div className="flex flex-col gap-1">
+                      {filteredPickable.map((f) => (
+                        // biome-ignore lint/a11y/noLabelWithoutControl: checkbox list pattern — label wraps interactive element
+                        <label
+                          key={f.columnName}
+                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            id={`col-toggle-${f.columnName}`}
+                            checked={table.getColumn(f.columnName)?.getIsVisible() ?? false}
+                            onCheckedChange={(value) => table.getColumn(f.columnName)?.toggleVisibility(!!value)}
+                          />
+                          <span className="truncate text-sm capitalize">{f.Name}</span>
+                        </label>
+                      ))}
+                      {filteredPickable.length === 0 && (
+                        <span className="py-4 text-center text-muted-foreground text-xs">No columns found</span>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+                <TabsContent value="order" className="p-3">
+                  <p className="mb-2 text-muted-foreground text-xs">Use ↑ ↓ to reorder visible columns</p>
+                  <ScrollArea className="h-64 pr-2">
+                    <div className="flex flex-col gap-0.5">
+                      {visibleFields.map((f, idx) => (
+                        <div
+                          key={f.columnName}
+                          className="flex items-center justify-between rounded px-1 py-1 hover:bg-muted/50"
+                        >
+                          <span className="flex-1 truncate text-sm capitalize">{f.Name}</span>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              className="rounded p-1 text-xs hover:bg-muted disabled:opacity-30"
+                              onClick={() => moveColumn(idx, -1)}
+                              disabled={idx === 0}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded p-1 text-xs hover:bg-muted disabled:opacity-30"
+                              onClick={() => moveColumn(idx, 1)}
+                              disabled={idx === visibleFields.length - 1}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {visibleFields.length === 0 && (
+                        <span className="py-4 text-center text-muted-foreground text-xs">
+                          No visible columns to reorder
+                        </span>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </PopoverContent>
+          </Popover>
+          {configDirty && (
+            <Button variant="default" size="sm" onClick={handleSave}>
+              Save Layout
+            </Button>
+          )}
+          {configDirty && (
+            <Button variant="ghost" size="sm" onClick={handleReset}>
+              <RotateCcw /> Reset
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download /> Export
           </Button>
           <Button size="sm">
@@ -104,7 +360,7 @@ export function BusinessPartners() {
               value={statusFilters[0]}
               onValueChange={(value: string) => {
                 const filterVal = value === "Active" ? "true" : value === "Inactive" ? "false" : "All";
-                setColumnSelectFilter("active", filterVal);
+                setColumnSelectFilter("IsActive", filterVal);
               }}
             >
               <SelectTrigger size="sm">
