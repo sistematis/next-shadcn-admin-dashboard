@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { deleteModel } from "@/lib/idempiere/client";
+import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 
 import { buildColumns, getPickableFields } from "./bp-columns";
 import { BPTable } from "./bp-table";
@@ -34,14 +35,7 @@ import { useBusinessPartners } from "./use-business-partners";
 
 const statusFilters = ["All", "Active", "Inactive"];
 
-const DEFAULT_VISIBLE_FIELDS = new Set([
-  "Name",
-  "IsCustomer",
-  "IsVendor",
-  "C_BP_Group_ID",
-  "SO_CreditUsed",
-  "IsActive",
-]);
+// ponytail: no DEFAULT_VISIBLE_FIELDS — column visibility comes from AD_Field.IsDisplayedGrid
 const BP_CONFIG_KEY = "erp_bp_table_config";
 
 interface SavedConfig {
@@ -111,9 +105,10 @@ export function BusinessPartners() {
       if (saved.sorting.length) setSorting(saved.sorting);
       return;
     }
+    // ponytail: default visibility = IsDisplayedGrid from AD_Field, not hardcoded set
     const vis: VisibilityState = {};
     for (const f of fields) {
-      if (f.columnName && !DEFAULT_VISIBLE_FIELDS.has(f.columnName)) vis[f.columnName] = false;
+      if (f.columnName && f.isDisplayedGrid === false) vis[f.columnName] = false;
     }
     vis.search = false;
     setColumnVisibility(vis);
@@ -157,7 +152,7 @@ export function BusinessPartners() {
     localStorage.removeItem(BP_CONFIG_KEY);
     const vis: VisibilityState = {};
     for (const f of fields) {
-      if (f.columnName && !DEFAULT_VISIBLE_FIELDS.has(f.columnName)) vis[f.columnName] = false;
+      if (f.columnName && f.isDisplayedGrid === false) vis[f.columnName] = false;
     }
     vis.search = false;
     setColumnVisibility(vis);
@@ -481,18 +476,4 @@ export function BusinessPartners() {
       <DetailDrawer open={drawerOpen} onOpenChange={setDrawerOpen} data={drawerData} onEdit={handleEditFromDrawer} />
     </Card>
   );
-}
-
-// ponytail: read token from storage — works outside React tree (bulk delete handler)
-function getTokenFromStorage(): string | null {
-  if (typeof window === "undefined") return null;
-  const useLocal = localStorage.getItem("erp_remember") === "true";
-  const s = useLocal ? localStorage : sessionStorage;
-  const raw = s.getItem("erp_token");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as string;
-  } catch {
-    return raw;
-  }
 }

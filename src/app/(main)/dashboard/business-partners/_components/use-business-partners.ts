@@ -5,14 +5,13 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/lib/idempiere/auth-context";
-import { getModels, getWindowFields } from "@/lib/idempiere/client";
+import { getModels, getWindowFieldLayout, getWindowFields, getWindowTabs } from "@/lib/idempiere/client";
 import type { WindowField } from "@/lib/idempiere/types";
 
 // ponytail: BPRow is now a generic bag — window metadata drives column defs
 export type BPRow = Record<string, unknown> & { id: number };
 
-// ponytail: fetch all columns from c_bpartner — window metadata controls visibility, not $select.
-// Trade-off: slightly larger payload, but avoids refetch when columns are toggled.
+export const BP_WINDOW_SLUG = "business-partner";
 
 export function useBusinessPartners() {
   const { token } = useAuth();
@@ -31,14 +30,27 @@ export function useBusinessPartners() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch window field metadata + records in parallel
-      const [fieldData, resp] = await Promise.all([
-        getWindowFields("business-partner", "business-partner", token),
-        getModels<Record<string, unknown>>("c_bpartner", token, {
-          orderby: "Name asc",
-          top: 100,
-        }),
-      ]);
+      // Fetch tab metadata to get AD_Tab_ID for layout-enhanced field query
+      const tabs = await getWindowTabs(BP_WINDOW_SLUG, token);
+      const headerTab = tabs.find((t) => t.TabLevel === 0) ?? tabs[0];
+
+      let fieldData: WindowField[];
+      if (headerTab) {
+        // ponytail: prefer layout API (has IsDisplayedGrid, SeqNoGrid, XPosition, ColumnSpan, AD_Reference_ID)
+        try {
+          fieldData = await getWindowFieldLayout(headerTab.id, token);
+        } catch {
+          // ponytail: fallback for non-admin roles that can't query AD_Field directly
+          fieldData = await getWindowFields(BP_WINDOW_SLUG, headerTab.slug, token);
+        }
+      } else {
+        fieldData = [];
+      }
+
+      const resp = await getModels<Record<string, unknown>>("c_bpartner", token, {
+        orderby: "Name asc",
+        top: 100,
+      });
       setFields(fieldData);
       setTotalCount(resp["row-count"] ?? resp.records.length);
       setData(resp.records as BPRow[]);

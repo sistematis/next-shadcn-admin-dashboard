@@ -14,6 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { createModel, updateModel } from "@/lib/idempiere/client";
+import { isSystemField } from "@/lib/idempiere/field-utils";
+import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 
 import { PartnerTabsView } from "./partner-tabs-view";
 import type { BPRow } from "./use-business-partners";
@@ -52,10 +54,7 @@ export function PartnerDialog({ open, onOpenChange, mode, initialData, onSaved }
 
     // ponytail: strip system/audit fields from payload
     const payload = stripSystemFields(formData);
-    if (!payload.Name) {
-      toast.error("Name is required");
-      return;
-    }
+    // ponytail: no client-side mandatory validation — backend enforces IsMandatory from AD_Column
 
     setSaving(true);
     try {
@@ -112,37 +111,11 @@ export function PartnerDialog({ open, onOpenChange, mode, initialData, onSaved }
   );
 }
 
-const SYSTEM_FIELDS = new Set([
-  "id",
-  "uid",
-  "model-name",
-  "Created",
-  "Updated",
-  "CreatedBy",
-  "UpdatedBy",
-  "AD_Client_ID",
-  "AD_Org_ID",
-]);
-
 function stripSystemFields(data: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data)) {
-    if (SYSTEM_FIELDS.has(k)) continue;
-    if (k.endsWith("_UU")) continue;
+    if (isSystemField(k)) continue;
     out[k] = v;
   }
   return out;
-}
-
-function getTokenFromStorage(): string | null {
-  if (typeof window === "undefined") return null;
-  const useLocal = localStorage.getItem("erp_remember") === "true";
-  const s = useLocal ? localStorage : sessionStorage;
-  const raw = s.getItem("erp_token");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as string;
-  } catch {
-    return raw;
-  }
 }

@@ -14,23 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isBooleanField, isFKField, isNumberField, isPickableField } from "@/lib/idempiere/field-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
 import type { BPRow } from "./use-business-partners";
 
-// Columns that should always be visible, never hidden
-const _ALWAYS_VISIBLE = new Set(["select", "actions"]);
-
 // Columns excluded from the "Columns" dropdown (internal/helper columns)
-const HIDDEN_FROM_PICKER = new Set([
-  "search",
-  "select",
-  "actions",
-  "C_BPartner_UU",
-  "C_BPartner_ID",
-  "AD_Client_ID",
-  "AD_Org_ID",
-]);
+const TABLE_HIDDEN = new Set(["search", "select", "actions"]);
 
 /** Generate column defs from window field metadata + hardcoded chrome (select, search, actions) */
 export interface RowActions {
@@ -39,6 +29,12 @@ export interface RowActions {
 }
 
 export function buildColumns(fields: WindowField[], actions?: RowActions): ColumnDef<BPRow>[] {
+  // ponytail: table columns use isDisplayedGrid + seqNoGrid, form uses isDisplayed + seqNo.
+  // If isDisplayedGrid is undefined (legacy getWindowFields), fall back to all pickable.
+  const gridFields = fields.filter((f) => f.isDisplayedGrid !== false);
+  // ponytail: sort by seqNoGrid when available, preserve API order otherwise
+  gridFields.sort((a, b) => (a.seqNoGrid ?? 999) - (b.seqNoGrid ?? 999));
+
   const cols: ColumnDef<BPRow>[] = [
     {
       id: "select",
@@ -65,8 +61,10 @@ export function buildColumns(fields: WindowField[], actions?: RowActions): Colum
     },
   ];
 
-  for (const f of fields) {
-    if (HIDDEN_FROM_PICKER.has(f.columnName)) continue;
+  for (const f of gridFields) {
+    // ponytail: use centralized system field check instead of hardcoded set
+    if (!isPickableField(f.columnName)) continue;
+    if (TABLE_HIDDEN.has(f.columnName)) continue;
     const col = buildColumnDef(f);
     if (col) cols.push(col);
   }
@@ -118,8 +116,8 @@ function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
   // ponytail: all data columns are sortable by default
   const sortingEnabled = { enableSorting: true };
 
-  // Boolean columns → check badge
-  if (key.startsWith("Is")) {
+  // Boolean columns → check badge (AD_Reference_ID = 20 or columnName starts with "Is")
+  if (isBooleanField(f)) {
     return {
       accessorKey: key,
       header: label,
@@ -136,8 +134,8 @@ function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
     };
   }
 
-  // Credit / money columns → formatted
-  if (key === "SO_CreditUsed" || key === "SO_CreditLimit" || key === "TotalOpenBalance") {
+  // Number/money columns → formatted (AD_Reference_ID = 11,12,22,37 or name heuristic)
+  if (isNumberField(f)) {
     return {
       accessorKey: key,
       header: label,
@@ -164,8 +162,8 @@ function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
     };
   }
 
-  // FK reference columns → show identifier
-  if (f.reference) {
+  // FK reference columns → show identifier (AD_Reference_ID = 18,19,30,21 or _ID suffix)
+  if (isFKField(f)) {
     return {
       accessorKey: key,
       header: label,
@@ -196,5 +194,5 @@ function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
 
 /** Fields safe to show in the Columns picker dropdown */
 export function getPickableFields(fields: WindowField[]): WindowField[] {
-  return fields.filter((f) => !HIDDEN_FROM_PICKER.has(f.columnName));
+  return fields.filter((f) => isPickableField(f.columnName) && !TABLE_HIDDEN.has(f.columnName));
 }

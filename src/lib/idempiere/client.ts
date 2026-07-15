@@ -332,4 +332,146 @@ export async function getWindowTabs(windowSlug: string, token: string): Promise<
   }));
 }
 
+// ── Window metadata: Layout-enhanced field fetch ───────────
+
+/**
+ * Fetch field definitions with full layout metadata from AD_Field + AD_Column.
+ * Uses /models/ad_field with $expand=AD_Column_ID — returns position, span,
+ * display logic, reference type, field length, mandatory flag.
+ *
+ * Requires SuperUser/Admin role (Full Access) since it queries AD_Field directly.
+ *
+ * @param tabId AD_Tab_ID — e.g. 220 for Business Partner header tab
+ */
+export async function getWindowFieldLayout(tabId: number, token: string): Promise<WindowField[]> {
+  // ponytail: no IsDisplayed filter — a field can be grid-only (IsDisplayed=false, IsDisplayedGrid=true).
+  // Consumer filters by isDisplayed (form) or isDisplayedGrid (table).
+  const data = await apiRequest<
+    QueryResponse<{
+      id: number;
+      Name: string;
+      Description?: string;
+      Help?: string;
+      SeqNo: number;
+      SeqNoGrid: number;
+      IsDisplayed: boolean;
+      IsDisplayedGrid: boolean;
+      IsReadOnly: boolean;
+      IsSameLine: boolean;
+      IsEncrypted: boolean;
+      DisplayLogic?: string;
+      MandatoryLogic?: string;
+      XPosition: number;
+      ColumnSpan: number;
+      NumLines: number;
+      IsActive: boolean;
+      AD_FieldGroup_ID?: { id: number; identifier?: string };
+      AD_Column_ID?: {
+        id: number;
+        identifier?: string;
+        ColumnName: string;
+        AD_Reference_ID?: { id: number; identifier?: string };
+        FieldLength: number;
+        IsMandatory: boolean;
+      };
+    }>
+  >(
+    `/models/ad_field?$filter=AD_Tab_ID eq ${tabId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Column_ID($select=ColumnName,AD_Reference_ID,FieldLength,IsMandatory),AD_FieldGroup_ID&$select=Name,Description,Help,SeqNo,SeqNoGrid,IsDisplayed,IsDisplayedGrid,IsReadOnly,IsSameLine,DisplayLogic,MandatoryLogic,XPosition,ColumnSpan,NumLines,IsActive,AD_FieldGroup_ID,AD_Column_ID`,
+    {
+      token,
+    },
+  );
+
+  return data.records.map((f) => ({
+    id: f.id,
+    Name: f.Name,
+    Description: f.Description,
+    Help: f.Help,
+    columnName: f.AD_Column_ID?.ColumnName ?? "",
+    reference: f.AD_Column_ID
+      ? { id: f.AD_Column_ID.id, identifier: f.AD_Column_ID.identifier ?? "", "model-name": "ad_column" }
+      : undefined,
+    seqNo: f.SeqNo,
+    seqNoGrid: f.SeqNoGrid,
+    isDisplayed: f.IsDisplayed,
+    isDisplayedGrid: f.IsDisplayedGrid,
+    isReadOnly: f.IsReadOnly,
+    isSameLine: f.IsSameLine,
+    xPosition: f.XPosition,
+    columnSpan: f.ColumnSpan,
+    numLines: f.NumLines,
+    displayLogic: f.DisplayLogic,
+    mandatoryLogic: f.MandatoryLogic,
+    fieldGroup: f.AD_FieldGroup_ID
+      ? { id: f.AD_FieldGroup_ID.id, identifier: f.AD_FieldGroup_ID.identifier }
+      : undefined,
+    referenceType: f.AD_Column_ID?.AD_Reference_ID?.id,
+    fieldLength: f.AD_Column_ID?.FieldLength,
+    isMandatory: f.AD_Column_ID?.IsMandatory,
+  }));
+}
+
+/**
+ * Fetch tab metadata with AD_Table_ID for direct model queries.
+ * Uses /models/ad_tab — returns table name, where clause, layout flags.
+ *
+ * @param windowId AD_Window_ID
+ */
+export async function getWindowTabsMetadata(windowId: number, token: string): Promise<WindowTab[]> {
+  const data = await apiRequest<
+    QueryResponse<{
+      id: number;
+      Name: string;
+      Description?: string;
+      Help?: string;
+      SeqNo: number;
+      TabLevel: number;
+      slug?: string;
+      AD_Table_ID?: { id: number; identifier?: string };
+      WhereClause?: string;
+      IsSingleRow?: boolean;
+      HasTree?: boolean;
+    }>
+  >(
+    `/models/ad_tab?$filter=AD_Window_ID eq ${windowId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Table_ID&$select=Name,Description,Help,SeqNo,TabLevel,WhereClause,IsSingleRow,HasTree,AD_Table_ID`,
+    {
+      token,
+    },
+  );
+
+  return data.records.map((t) => ({
+    id: t.id,
+    Name: t.Name,
+    Description: t.Description,
+    Help: t.Help,
+    slug: t.slug ?? slugify(t.Name),
+    SeqNo: t.SeqNo,
+    TabLevel: t.TabLevel,
+    AD_Table_ID: t.AD_Table_ID?.id,
+    WhereClause: t.WhereClause,
+    IsSingleRow: t.IsSingleRow,
+    HasTree: t.HasTree,
+  }));
+}
+
+// ponytail: minimal slugify for tab names when REST endpoint doesn't include slug property
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * Lookup AD_Window_ID by name (partial match).
+ * For SuperUser/Admin sessions only.
+ */
+export async function findWindowIdByName(name: string, token: string): Promise<number | null> {
+  const data = await apiRequest<QueryResponse<{ id: number; Name: string }>>(
+    `/models/ad_window?$filter=contains(Name,'${name.replace(/'/g, "''")}') and IsActive eq true&$select=id,Name`,
+    { token },
+  );
+  return data.records.length > 0 ? data.records[0].id : null;
+}
+
 export { apiRequest, buildQueryString };

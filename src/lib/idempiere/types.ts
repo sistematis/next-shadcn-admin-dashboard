@@ -132,6 +132,38 @@ export interface WindowField {
   columnName: string; // extracted from AD_Column_ID.identifier
   /** Raw FK reference, or null for scalar columns */
   reference?: { id: number; identifier: string; "model-name"?: string };
+  // ── Layout metadata (from AD_Field, populated by getWindowFieldLayout) ──
+  /** Display order within tab (AD_Field.SeqNo) */
+  seqNo?: number;
+  /** Grid order for table columns (AD_Field.SeqNoGrid) */
+  seqNoGrid?: number;
+  /** Is field displayed in form view (AD_Field.IsDisplayed) */
+  isDisplayed?: boolean;
+  /** Is field displayed in grid/table view (AD_Field.IsDisplayedGrid) */
+  isDisplayedGrid?: boolean;
+  /** Read-only flag (AD_Field.IsReadOnly) */
+  isReadOnly?: boolean;
+  /** Same-line placement (AD_Field.IsSameLine) — legacy positioning */
+  isSameLine?: boolean;
+  /** Grid X position 1-12 (AD_Field.XPosition) */
+  xPosition?: number;
+  /** Grid column span (AD_Field.ColumnSpan) */
+  columnSpan?: number;
+  /** Number of lines for textarea (AD_Field.NumLines) */
+  numLines?: number;
+  /** Display logic expression, e.g. "@IsCustomer@=Y" (AD_Field.DisplayLogic) */
+  displayLogic?: string;
+  /** Field group (AD_Field.AD_FieldGroup_ID) */
+  fieldGroup?: { id: number; identifier?: string };
+  /** Mandatory logic expression (AD_Field.MandatoryLogic) */
+  mandatoryLogic?: string;
+  // ── Column metadata (from AD_Column via $expand) ──
+  /** AD_Reference_ID — determines field type (String=10, Yes-No=20, Table Direct=19, etc.) */
+  referenceType?: number;
+  /** Column field length (AD_Column.FieldLength) */
+  fieldLength?: number;
+  /** Column is mandatory (AD_Column.IsMandatory) */
+  isMandatory?: boolean;
 }
 
 /** Tab definition from /windows/{window}/tabs */
@@ -143,6 +175,14 @@ export interface WindowTab {
   slug: string;
   SeqNo: number;
   TabLevel: number;
+  /** AD_Table_ID for this tab — useful for direct model queries */
+  AD_Table_ID?: number;
+  /** Where clause for tab filtering (MTab.WhereClause) */
+  WhereClause?: string;
+  /** Single-row only tab (no grid) */
+  IsSingleRow?: boolean;
+  /** Has tree structure */
+  HasTree?: boolean;
 }
 
 /** Extract columnName from the AD_Column_ID.identifier ("ColumnName_DisplayName") */
