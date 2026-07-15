@@ -471,7 +471,8 @@ function slugify(name: string): string {
  */
 export async function findWindowIdByName(name: string, token: string): Promise<number | null> {
   const data = await apiRequest<QueryResponse<{ id: number; Name: string }>>(
-    `/models/ad_window?$filter=contains(Name,'${name.replace(/'/g, "''")}') and IsActive eq true&$select=id,Name`,
+    // ponytail: omit $select=id — id is virtual in iDempiere REST, causes 400
+    `/models/ad_window?$filter=contains(Name,'${name.replace(/'/g, "''")}') and IsActive eq true&$select=Name`,
     { token },
   );
   return data.records.length > 0 ? data.records[0].id : null;

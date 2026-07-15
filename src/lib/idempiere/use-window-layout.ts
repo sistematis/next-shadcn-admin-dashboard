@@ -29,14 +29,15 @@ export function useWindowLayout(windowSlug: string, maxTabLevel = 1) {
       try {
         const allTabs = await getWindowTabs(windowSlug, "");
         // ponytail: enrich with tableName from AD_Tab metadata — needed for child CRUD model queries
-        const windowId = await findWindowIdByName(windowSlug, "");
+        // Wrapped in try/catch because findWindowIdByName can 400 if contains() or $select fails — must not break tab loading
         let metaTabs: WindowTab[] = [];
-        if (windowId) {
-          try {
+        try {
+          const windowId = await findWindowIdByName(windowSlug, "");
+          if (windowId) {
             metaTabs = await getWindowTabsMetadata(windowId, "");
-          } catch {
-            /* non-admin fallback — no tableName, child CRUD disabled */
           }
+        } catch {
+          /* non-admin or API quirk — child CRUD disabled, tabs still load */
         }
         const metaById = new Map(metaTabs.map((m) => [m.id, m]));
         const enriched = allTabs.map((t) => ({
