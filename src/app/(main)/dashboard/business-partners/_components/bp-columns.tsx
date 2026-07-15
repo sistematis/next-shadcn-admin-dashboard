@@ -33,7 +33,12 @@ const HIDDEN_FROM_PICKER = new Set([
 ]);
 
 /** Generate column defs from window field metadata + hardcoded chrome (select, search, actions) */
-export function buildColumns(fields: WindowField[]): ColumnDef<BPRow>[] {
+export interface RowActions {
+  onView: (row: BPRow) => void;
+  onEdit: (row: BPRow) => void;
+}
+
+export function buildColumns(fields: WindowField[], actions?: RowActions): ColumnDef<BPRow>[] {
   const cols: ColumnDef<BPRow>[] = [
     {
       id: "select",
@@ -78,7 +83,7 @@ export function buildColumns(fields: WindowField[]): ColumnDef<BPRow>[] {
   cols.push({
     id: "actions",
     header: () => <div className="text-right">Actions</div>,
-    cell: () => (
+    cell: ({ row }) => (
       <div className="text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -92,10 +97,8 @@ export function buildColumns(fields: WindowField[]): ColumnDef<BPRow>[] {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>View details</DropdownMenuItem>
-            <DropdownMenuItem>Edit partner</DropdownMenuItem>
-            <DropdownMenuItem>View orders</DropdownMenuItem>
-            <DropdownMenuItem>View invoices</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions?.onView(row.original)}>View details</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => actions?.onEdit(row.original)}>Edit partner</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive">Deactivate</DropdownMenuItem>
           </DropdownMenuContent>

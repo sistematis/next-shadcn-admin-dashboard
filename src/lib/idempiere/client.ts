@@ -18,6 +18,7 @@ import type {
   QueryOptions,
   QueryResponse,
   WindowField,
+  WindowTab,
 } from "./types";
 import { getColumnId } from "./types";
 
@@ -291,6 +292,7 @@ export async function getWindowFields(windowSlug: string, tabSlug: string, token
       id: number;
       Name: string;
       Description?: string;
+      Help?: string;
       AD_Column_ID?: { identifier?: string; id: number; "model-name"?: string };
     }>;
   }>(`/windows/${windowSlug}/tabs/${tabSlug}/fields`, { token });
@@ -298,10 +300,35 @@ export async function getWindowFields(windowSlug: string, tabSlug: string, token
     id: f.id,
     Name: f.Name,
     Description: f.Description,
+    Help: f.Help,
     columnName: getColumnId(f),
     reference: f.AD_Column_ID?.identifier
       ? { id: f.AD_Column_ID.id, identifier: f.AD_Column_ID.identifier, "model-name": f.AD_Column_ID["model-name"] }
       : undefined,
+  }));
+}
+
+/** GET /windows/{window}/tabs — fetch all tabs for a window */
+export async function getWindowTabs(windowSlug: string, token: string): Promise<WindowTab[]> {
+  const data = await apiRequest<{
+    tabs: Array<{
+      id: number;
+      Name: string;
+      Description?: string;
+      Help?: string;
+      slug: string;
+      SeqNo: number;
+      TabLevel: number;
+    }>;
+  }>(`/windows/${windowSlug}/tabs`, { token });
+  return data.tabs.map((t) => ({
+    id: t.id,
+    Name: t.Name,
+    Description: t.Description,
+    Help: t.Help,
+    slug: t.slug,
+    SeqNo: t.SeqNo,
+    TabLevel: t.TabLevel,
   }));
 }
 

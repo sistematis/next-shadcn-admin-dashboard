@@ -12,7 +12,7 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Download, Plus, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { Download, Plus, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { deleteModel } from "@/lib/idempiere/client";
 
 import { buildColumns, getPickableFields } from "./bp-columns";
 import { BPTable } from "./bp-table";
+import { DetailDrawer } from "./detail-drawer";
+import { type DialogMode, PartnerDialog } from "./partner-dialog";
+import type { BPRow } from "./use-business-partners";
 import { useBusinessPartners } from "./use-business-partners";
 
 const statusFilters = ["All", "Active", "Inactive"];
@@ -58,9 +62,31 @@ function saveConfig(cfg: SavedConfig) {
 }
 
 export function BusinessPartners() {
-  const { data, fields, loading, totalCount } = useBusinessPartners();
+  const { data, fields, loading, totalCount, refetch } = useBusinessPartners();
 
-  const columns = React.useMemo(() => buildColumns(fields), [fields]);
+  // ponytail: dialog/drawer state — single reusable PartnerDialog for add+edit, DetailDrawer for view
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [dialogMode, setDialogMode] = React.useState<DialogMode>("add");
+  const [dialogData, setDialogData] = React.useState<BPRow | null>(null);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [drawerData, setDrawerData] = React.useState<BPRow | null>(null);
+  const [bulkDeleting, setBulkDeleting] = React.useState(false);
+
+  const columns = React.useMemo(
+    () =>
+      buildColumns(fields, {
+        onView: (row) => {
+          setDrawerData(row);
+          setDrawerOpen(true);
+        },
+        onEdit: (row) => {
+          setDialogData(row);
+          setDialogMode("edit");
+          setDialogOpen(true);
+        },
+      }),
+    [fields],
+  );
   const pickableFields = React.useMemo(() => getPickableFields(fields), [fields]);
 
   const [rowSelection, setRowSelection] = React.useState({});
@@ -197,6 +223,45 @@ export function BusinessPartners() {
     a.download = "business-partners.csv";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // ponytail: bulk delete selected rows — concurrent DELETE calls
+  async function handleBulkDelete() {
+    const selectedRows = table.getFilteredSelectedRowModel().rows;
+    if (!selectedRows.length) return;
+
+    const token = getTokenFromStorage();
+    if (!token) {
+      toast.error("Not authenticated");
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      await Promise.all(selectedRows.map((r) => deleteModel("c_bpartner", r.original.id, token)));
+      toast.success(`Deleted ${selectedRows.length} business partner(s)`);
+      setRowSelection({});
+      await refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast.error("Failed to delete some partners", { description: msg });
+      await refetch();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  function handleAddPartner() {
+    setDialogData(null);
+    setDialogMode("add");
+    setDialogOpen(true);
+  }
+
+  function handleEditFromDrawer() {
+    setDrawerOpen(false);
+    setDialogData(drawerData);
+    setDialogMode("edit");
+    setDialogOpen(true);
   }
 
   // ponytail: search filter for the column config popover — helps when table has 30+ fields
@@ -348,7 +413,7 @@ export function BusinessPartners() {
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download /> Export
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={handleAddPartner}>
             <Plus /> Add Partner
           </Button>
         </CardAction>
@@ -381,8 +446,16 @@ export function BusinessPartners() {
         </div>
 
         <div className="flex items-center justify-between gap-3 px-4">
-          <div className="text-muted-foreground text-sm tabular-nums">
-            {loading ? "Loading..." : `${selectedCount} selected`}
+          <div className="flex items-center gap-3">
+            <span className="text-muted-foreground text-sm tabular-nums">
+              {loading ? "Loading..." : `${selectedCount} selected`}
+            </span>
+            {selectedCount > 0 && (
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                <Trash2 />
+                {bulkDeleting ? "Deleting..." : `Delete Selected (${selectedCount})`}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -397,6 +470,29 @@ export function BusinessPartners() {
           <BPTable table={table} />
         )}
       </CardContent>
+
+      <PartnerDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        mode={dialogMode}
+        initialData={dialogData}
+        onSaved={refetch}
+      />
+      <DetailDrawer open={drawerOpen} onOpenChange={setDrawerOpen} data={drawerData} onEdit={handleEditFromDrawer} />
     </Card>
   );
+}
+
+// ponytail: read token from storage — works outside React tree (bulk delete handler)
+function getTokenFromStorage(): string | null {
+  if (typeof window === "undefined") return null;
+  const useLocal = localStorage.getItem("erp_remember") === "true";
+  const s = useLocal ? localStorage : sessionStorage;
+  const raw = s.getItem("erp_token");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as string;
+  } catch {
+    return raw;
+  }
 }

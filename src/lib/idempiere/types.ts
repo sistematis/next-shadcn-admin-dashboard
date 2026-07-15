@@ -128,9 +128,21 @@ export interface WindowField {
   id: number;
   Name: string;
   Description?: string;
+  Help?: string;
   columnName: string; // extracted from AD_Column_ID.identifier
   /** Raw FK reference, or null for scalar columns */
   reference?: { id: number; identifier: string; "model-name"?: string };
+}
+
+/** Tab definition from /windows/{window}/tabs */
+export interface WindowTab {
+  id: number;
+  Name: string;
+  Description?: string;
+  Help?: string;
+  slug: string;
+  SeqNo: number;
+  TabLevel: number;
 }
 
 /** Extract columnName from the AD_Column_ID.identifier ("ColumnName_DisplayName") */

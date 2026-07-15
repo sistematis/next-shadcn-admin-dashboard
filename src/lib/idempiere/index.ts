@@ -15,6 +15,8 @@ export {
   getOrganizations,
   getRoles,
   getWarehouses,
+  getWindowFields,
+  getWindowTabs,
   initLogin,
   logout,
   refreshToken,
@@ -35,4 +37,6 @@ export type {
   ReferenceField,
   SalesOrder,
   SalesOrderLine,
+  WindowField,
+  WindowTab,
 } from "./types";
