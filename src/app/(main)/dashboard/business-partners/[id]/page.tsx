@@ -58,7 +58,7 @@ export default function EditPartnerPage() {
       router.push("/dashboard/business-partners");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`Failed to save: ${msg}`);
+      toast.error(msg.includes("detail") ? msg : `Failed to save: ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -77,7 +77,7 @@ export default function EditPartnerPage() {
               <ArrowLeft className="size-4" />
             </Link>
           </Button>
-          <h1 className="text-2xl font-semibold">Edit: {String(formData.Name ?? `#${id}`)}</h1>
+          <h1 className="font-semibold text-2xl">Edit: {String(formData.Name ?? `#${id}`)}</h1>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild>

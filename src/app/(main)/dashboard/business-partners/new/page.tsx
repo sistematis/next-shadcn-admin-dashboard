@@ -9,7 +9,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { createModel, getModel, updateModel } from "@/lib/idempiere/client";
+import { createModel } from "@/lib/idempiere/client";
 import { isSystemField } from "@/lib/idempiere/field-utils";
 import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 
@@ -39,7 +39,8 @@ export default function NewPartnerPage() {
       router.push("/dashboard/business-partners");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`Failed to save: ${msg}`);
+      // ponytail: iDempiere returns "Validation Error" with field detail — extract the useful part
+      toast.error(msg.includes("detail") ? msg : `Failed to save: ${msg}`);
     } finally {
       setSaving(false);
     }
@@ -54,7 +55,7 @@ export default function NewPartnerPage() {
               <ArrowLeft className="size-4" />
             </Link>
           </Button>
-          <h1 className="text-2xl font-semibold">Add Business Partner</h1>
+          <h1 className="font-semibold text-2xl">Add Business Partner</h1>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild>

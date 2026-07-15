@@ -371,12 +371,13 @@ export async function getWindowFieldLayout(tabId: number, token: string): Promis
         identifier?: string;
         ColumnName: string;
         AD_Reference_ID?: { id: number; identifier?: string };
+        AD_Reference_Value_ID?: { id: number; identifier?: string };
         FieldLength: number;
         IsMandatory: boolean;
       };
     }>
   >(
-    `/models/ad_field?$filter=AD_Tab_ID eq ${tabId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Column_ID($select=ColumnName,AD_Reference_ID,FieldLength,IsMandatory),AD_FieldGroup_ID&$select=Name,Description,Help,SeqNo,SeqNoGrid,IsDisplayed,IsDisplayedGrid,IsReadOnly,IsSameLine,DisplayLogic,MandatoryLogic,XPosition,ColumnSpan,NumLines,IsActive,AD_FieldGroup_ID,AD_Column_ID`,
+    `/models/ad_field?$filter=AD_Tab_ID eq ${tabId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Column_ID($select=ColumnName,AD_Reference_ID,AD_Reference_Value_ID,FieldLength,IsMandatory),AD_FieldGroup_ID&$select=Name,Description,Help,SeqNo,SeqNoGrid,IsDisplayed,IsDisplayedGrid,IsReadOnly,IsSameLine,DisplayLogic,MandatoryLogic,XPosition,ColumnSpan,NumLines,IsActive,AD_FieldGroup_ID,AD_Column_ID`,
     {
       token,
     },
@@ -406,6 +407,7 @@ export async function getWindowFieldLayout(tabId: number, token: string): Promis
       ? { id: f.AD_FieldGroup_ID.id, identifier: f.AD_FieldGroup_ID.identifier }
       : undefined,
     referenceType: f.AD_Column_ID?.AD_Reference_ID?.id,
+    referenceValueId: f.AD_Column_ID?.AD_Reference_Value_ID?.id,
     fieldLength: f.AD_Column_ID?.FieldLength,
     isMandatory: f.AD_Column_ID?.IsMandatory,
   }));
@@ -427,13 +429,13 @@ export async function getWindowTabsMetadata(windowId: number, token: string): Pr
       SeqNo: number;
       TabLevel: number;
       slug?: string;
-      AD_Table_ID?: { id: number; identifier?: string };
+      AD_Table_ID?: { id: number; identifier?: string; TableName?: string };
       WhereClause?: string;
       IsSingleRow?: boolean;
       HasTree?: boolean;
     }>
   >(
-    `/models/ad_tab?$filter=AD_Window_ID eq ${windowId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Table_ID&$select=Name,Description,Help,SeqNo,TabLevel,WhereClause,IsSingleRow,HasTree,AD_Table_ID`,
+    `/models/ad_tab?$filter=AD_Window_ID eq ${windowId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Table_ID($select=TableName)&$select=Name,Description,Help,SeqNo,TabLevel,WhereClause,IsSingleRow,HasTree,AD_Table_ID`,
     {
       token,
     },
@@ -448,6 +450,7 @@ export async function getWindowTabsMetadata(windowId: number, token: string): Pr
     SeqNo: t.SeqNo,
     TabLevel: t.TabLevel,
     AD_Table_ID: t.AD_Table_ID?.id,
+    tableName: t.AD_Table_ID?.TableName,
     WhereClause: t.WhereClause,
     IsSingleRow: t.IsSingleRow,
     HasTree: t.HasTree,

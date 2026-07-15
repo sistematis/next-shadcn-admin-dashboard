@@ -164,6 +164,8 @@ export interface WindowField {
   fieldLength?: number;
   /** Column is mandatory (AD_Column.IsMandatory) */
   isMandatory?: boolean;
+  /** AD_Reference_Value_ID — validation list ID for List-type fields (ref 17) */
+  referenceValueId?: number;
 }
 
 /** Tab definition from /windows/{window}/tabs */
@@ -177,6 +179,8 @@ export interface WindowTab {
   TabLevel: number;
   /** AD_Table_ID for this tab — useful for direct model queries */
   AD_Table_ID?: number;
+  /** Lowercase table name for model API calls (e.g. "c_bpartner_location") */
+  tableName?: string;
   /** Where clause for tab filtering (MTab.WhereClause) */
   WhereClause?: string;
   /** Single-row only tab (no grid) */

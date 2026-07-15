@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { getWindowFieldLayout, getWindowTabs, getWindowTabsMetadata } from "@/lib/idempiere/client";
+import { findWindowIdByName, getWindowFieldLayout, getWindowTabs, getWindowTabsMetadata } from "@/lib/idempiere/client";
 import type { WindowField, WindowTab } from "@/lib/idempiere/types";
 
 /**
@@ -28,7 +28,22 @@ export function useWindowLayout(windowSlug: string, maxTabLevel = 1) {
       setError(null);
       try {
         const allTabs = await getWindowTabs(windowSlug, "");
-        const useful = allTabs.filter((t) => t.TabLevel <= maxTabLevel).sort((a, b) => a.SeqNo - b.SeqNo);
+        // ponytail: enrich with tableName from AD_Tab metadata — needed for child CRUD model queries
+        const windowId = await findWindowIdByName(windowSlug, "");
+        let metaTabs: WindowTab[] = [];
+        if (windowId) {
+          try {
+            metaTabs = await getWindowTabsMetadata(windowId, "");
+          } catch {
+            /* non-admin fallback — no tableName, child CRUD disabled */
+          }
+        }
+        const metaById = new Map(metaTabs.map((m) => [m.id, m]));
+        const enriched = allTabs.map((t) => ({
+          ...t,
+          tableName: metaById.get(t.id)?.tableName ?? metaById.get(t.id)?.tableName,
+        }));
+        const useful = enriched.filter((t) => t.TabLevel <= maxTabLevel).sort((a, b) => a.SeqNo - b.SeqNo);
         if (cancelled) return;
         setTabs(useful);
 

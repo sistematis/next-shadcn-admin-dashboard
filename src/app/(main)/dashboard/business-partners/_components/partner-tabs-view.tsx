@@ -18,6 +18,7 @@ import {
   isDateField,
   isFKField,
   isFormField,
+  isListField,
   isNumberField,
   isTextareaField,
 } from "@/lib/idempiere/field-utils";
@@ -25,6 +26,8 @@ import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 import { useWindowLayout } from "@/lib/idempiere/use-window-layout";
 
+// biome-ignore lint/suspicious/noImportCycles: parent-child cycle is harmless for tree-shaking
+import { ChildTabGrid } from "./child-tab-grid";
 import type { BPRow } from "./use-business-partners";
 
 const MAX_TAB_LEVEL = 1;
@@ -74,30 +77,37 @@ export function PartnerTabsView({
         const fields = (fieldsByTab[tab.slug] ?? [])
           .filter((f) => f.isDisplayed !== false && isFormField(f.columnName))
           .sort((a, b) => (a.seqNo ?? 999) - (b.seqNo ?? 999));
-        // ponytail: child tabs show read-only note until parent is saved
+        // ponytail: child tabs show editable grid with Add/Edit/Delete
         const isChildTab = tab.TabLevel > 0;
         return (
           <TabsContent key={tab.slug} value={tab.slug} className="mt-4">
-            {isChildTab && (
-              <p className="mb-3 text-muted-foreground text-xs italic">Child records are view-only in this version.</p>
+            {/* biome-ignore lint/style/noNestedTernary: three-way branch is clear here */}
+            {isChildTab && bpId && tab.tableName ? (
+              <ChildTabGrid
+                tableName={tab.tableName}
+                parentColumnName="C_BPartner_ID"
+                parentId={bpId}
+                fields={fieldsByTab[tab.slug] ?? []}
+              />
+            ) : isChildTab ? (
+              <p className="text-muted-foreground text-sm italic">Save the record first to add child records.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {fields.map((f) => {
+                  const span = fieldGridSpan(f.columnSpan);
+                  return (
+                    <div key={f.columnName} className={span}>
+                      <FieldInput
+                        field={f}
+                        value={data?.[f.columnName]}
+                        onChange={(v) => onDataChange(f.columnName, v)}
+                        readOnly={(readOnly ?? false) || f.isReadOnly === true}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             )}
-            {/* ponytail: responsive grid — iDempiere's 12-col ZK layout is unreadable in a narrow dialog/drawer.
-                Map ColumnSpan to buckets (full/half/third) and drop XPosition entirely. */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {fields.map((f) => {
-                const span = fieldGridSpan(f.columnSpan);
-                return (
-                  <div key={f.columnName} className={span}>
-                    <FieldInput
-                      field={f}
-                      value={data?.[f.columnName]}
-                      onChange={(v) => onDataChange(f.columnName, v)}
-                      readOnly={(readOnly ?? false) || isChildTab || f.isReadOnly === true}
-                    />
-                  </div>
-                );
-              })}
-            </div>
           </TabsContent>
         );
       })}
@@ -105,7 +115,7 @@ export function PartnerTabsView({
   );
 }
 
-function FieldInput({
+export function FieldInput({
   field,
   value,
   onChange,
@@ -201,6 +211,11 @@ function FieldInput({
   // FK reference → Select with lookup from reference table
   if (isFKField(field)) {
     return <FKSelect field={field} value={value} onChange={onChange} readOnly={readOnly} />;
+  }
+
+  // List reference (AD_Reference_ID=17) → Select from AD_Ref_List
+  if (isListField(field)) {
+    return <ListSelect field={field} value={value} onChange={onChange} readOnly={readOnly} />;
   }
 
   // Scalar fallback → text input
@@ -389,5 +404,111 @@ function FieldHelp({ text }: { text: string }) {
         {text}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** List-type dropdown — fetches options from AD_Ref_List by referenceValueId. */
+function ListSelect({
+  field,
+  value,
+  onChange,
+  readOnly,
+}: {
+  field: WindowField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  readOnly: boolean;
+}) {
+  const { columnName: key, Name: label, Description, Help } = field;
+  const refListId = field.referenceValueId;
+  const [options, setOptions] = React.useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  // ponytail: extract id from {id, identifier} or raw string
+  // biome-ignore lint/style/noNestedTernary: three-way extraction is readable
+  const currentId =
+    typeof value === "object" && value !== null && "id" in value
+      ? String((value as { id: string }).id)
+      : typeof value === "string"
+        ? value
+        : "";
+
+  React.useEffect(() => {
+    if (!refListId || readOnly) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = getTokenFromStorage();
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+        const resp = await getModels<{ id: number; Value?: string; Name?: string }>("ad_ref_list", token, {
+          filter: `AD_Reference_ID eq ${refListId}`,
+          select: "Value,Name",
+          orderby: "Name asc",
+          top: 100,
+        });
+        if (!cancelled) {
+          setOptions(resp.records.map((r) => ({ id: r.Value ?? String(r.id), name: r.Name ?? r.Value ?? "?" })));
+        }
+      } catch {
+        // ponytail: fallback — show as text input
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refListId, readOnly]);
+
+  if (readOnly || !refListId) {
+    const display =
+      typeof value === "object" && value !== null && "identifier" in value
+        ? ((value as { identifier?: string }).identifier ?? "")
+        : String(value ?? "");
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={key}>
+          {label}
+          {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
+        </Label>
+        <Input id={key} value={display} disabled readOnly />
+        {Help && <FieldHelp text={Help} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={key}>
+        {label}
+        {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
+      <Select
+        value={currentId || undefined}
+        onValueChange={(v) => {
+          const opt = options.find((o) => o.id === v);
+          // ponytail: store {id, identifier} — same shape as FK fields
+          onChange(opt ? { id: opt.id, identifier: opt.name } : { id: v });
+        }}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={loading ? "Loading..." : (Description ?? "Select...")} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.id} value={opt.id}>
+              {opt.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {Help && <FieldHelp text={Help} />}
+    </div>
   );
 }

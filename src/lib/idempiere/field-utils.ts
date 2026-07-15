@@ -42,6 +42,8 @@ export const NUMBER_REFS = new Set([11, 12, 22, 37]);
 export const FK_REFS = new Set([18, 19, 30, 21]);
 /** Reference IDs that render as multiline text */
 export const TEXTAREA_REFS = new Set([14, 34]);
+/** Reference IDs that render as dropdown from AD_Ref_List */
+export const LIST_REFS = new Set([17]);
 
 export function isBooleanField(f: WindowField): boolean {
   if (f.referenceType != null) return BOOLEAN_REFS.has(f.referenceType);
@@ -82,6 +84,10 @@ export function isTextareaField(f: WindowField): boolean {
   if (f.referenceType) return TEXTAREA_REFS.has(f.referenceType);
   // Fallback
   return f.columnName === "Description" || f.columnName === "Help" || f.columnName === "Comments";
+}
+
+export function isListField(f: WindowField): boolean {
+  return f.referenceType ? LIST_REFS.has(f.referenceType) : false;
 }
 
 // ── System column filtering ─────────────────────────────────
