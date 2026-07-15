@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { useRouter } from "next/navigation";
+
 import {
   type ColumnFiltersState,
   getCoreRowModel,
@@ -24,37 +26,24 @@ import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 
 import { buildColumns } from "./bp-columns";
 import { BPTable } from "./bp-table";
-import { DetailDrawer } from "./detail-drawer";
-import { type DialogMode, PartnerDialog } from "./partner-dialog";
 import type { BPRow } from "./use-business-partners";
 import { useBusinessPartners } from "./use-business-partners";
 
 const statusFilters = ["All", "Active", "Inactive"];
 
 export function BusinessPartners() {
+  const router = useRouter();
   const { data, fields, loading, totalCount, refetch } = useBusinessPartners();
 
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [dialogMode, setDialogMode] = React.useState<DialogMode>("add");
-  const [dialogData, setDialogData] = React.useState<BPRow | null>(null);
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [drawerData, setDrawerData] = React.useState<BPRow | null>(null);
   const [bulkDeleting, setBulkDeleting] = React.useState(false);
 
   const columns = React.useMemo(
     () =>
       buildColumns(fields, {
-        onView: (row) => {
-          setDrawerData(row);
-          setDrawerOpen(true);
-        },
-        onEdit: (row) => {
-          setDialogData(row);
-          setDialogMode("edit");
-          setDialogOpen(true);
-        },
+        onView: (row) => router.push(`/dashboard/business-partners/${row.id}`),
+        onEdit: (row) => router.push(`/dashboard/business-partners/${row.id}`),
       }),
-    [fields],
+    [fields, router],
   );
 
   const [rowSelection, setRowSelection] = React.useState({});
@@ -156,16 +145,7 @@ export function BusinessPartners() {
   }
 
   function handleAddPartner() {
-    setDialogData(null);
-    setDialogMode("add");
-    setDialogOpen(true);
-  }
-
-  function handleEditFromDrawer() {
-    setDrawerOpen(false);
-    setDialogData(drawerData);
-    setDialogMode("edit");
-    setDialogOpen(true);
+    router.push("/dashboard/business-partners/new");
   }
 
   return (
@@ -249,14 +229,7 @@ export function BusinessPartners() {
         )}
       </CardContent>
 
-      <PartnerDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        mode={dialogMode}
-        initialData={dialogData}
-        onSaved={refetch}
-      />
-      <DetailDrawer open={drawerOpen} onOpenChange={setDrawerOpen} data={drawerData} onEdit={handleEditFromDrawer} />
+      {/* ponytail: form is now full-page routes — /new and /[id] — no dialog/drawer */}
     </Card>
   );
 }

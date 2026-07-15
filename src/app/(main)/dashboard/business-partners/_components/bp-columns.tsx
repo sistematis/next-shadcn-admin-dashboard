@@ -188,7 +188,15 @@ function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
     header: label,
     filterFn: "includesString",
     ...sortingEnabled,
-    cell: ({ row }) => <span className="text-sm">{String(row.original[key] ?? "")}</span>,
+    cell: ({ row }) => {
+      // ponytail: List/FK fields return {id, identifier} — extract identifier for display
+      const val = row.original[key];
+      const display =
+        typeof val === "object" && val !== null
+          ? ((val as { identifier?: string }).identifier ?? "")
+          : String(val ?? "");
+      return <span className="text-sm">{display}</span>;
+    },
   };
 }
 

@@ -2,12 +2,17 @@
 
 import * as React from "react";
 
+import { HelpCircle } from "lucide-react";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { getModels } from "@/lib/idempiere/client";
 import {
   isBooleanField,
   isDateField,
@@ -16,6 +21,7 @@ import {
   isNumberField,
   isTextareaField,
 } from "@/lib/idempiere/field-utils";
+import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 import { useWindowLayout } from "@/lib/idempiere/use-window-layout";
 
@@ -75,17 +81,17 @@ export function PartnerTabsView({
             {isChildTab && (
               <p className="mb-3 text-muted-foreground text-xs italic">Child records are view-only in this version.</p>
             )}
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(12, minmax(0, 1fr))" }}>
+            {/* ponytail: responsive grid — iDempiere's 12-col ZK layout is unreadable in a narrow dialog/drawer.
+                Map ColumnSpan to buckets (full/half/third) and drop XPosition entirely. */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {fields.map((f) => {
-                const colSpan = f.columnSpan ?? 2;
-                const colStart = f.xPosition ?? 1;
+                const span = fieldGridSpan(f.columnSpan);
                 return (
-                  <div key={f.columnName} className="min-w-0" style={{ gridColumn: `${colStart} / span ${colSpan}` }}>
+                  <div key={f.columnName} className={span}>
                     <FieldInput
                       field={f}
                       value={data?.[f.columnName]}
                       onChange={(v) => onDataChange(f.columnName, v)}
-                      // biome-ignore lint/nursery/useNullishCoalescing: boolean OR is intentional — both operands are booleans
                       readOnly={(readOnly ?? false) || isChildTab || f.isReadOnly === true}
                     />
                   </div>
@@ -143,7 +149,7 @@ function FieldInput({
           className="min-h-20"
           rows={field.numLines ?? 3}
         />
-        {Help && <span className="text-muted-foreground text-xs">{Help}</span>}
+        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
@@ -165,7 +171,7 @@ function FieldInput({
           disabled={readOnly}
           placeholder={Description ?? ""}
         />
-        {Help && <span className="text-muted-foreground text-xs">{Help}</span>}
+        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
@@ -187,13 +193,18 @@ function FieldInput({
           disabled={readOnly}
           placeholder={Description ?? ""}
         />
-        {Help && <span className="text-muted-foreground text-xs">{Help}</span>}
+        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
 
-  // FK reference → text input (ponytail: could be a Select with lookup, but YAGNI until we have reference data endpoints)
+  // FK reference → Select with lookup from reference table
+  if (isFKField(field)) {
+    return <FKSelect field={field} value={value} onChange={onChange} readOnly={readOnly} />;
+  }
+
   // Scalar fallback → text input
+  // ponytail: List/FK objects {id,identifier} from legacy fields render as identifier
   const strVal =
     typeof value === "object" && value !== null
       ? ((value as { identifier?: string }).identifier ?? "")
@@ -213,7 +224,170 @@ function FieldInput({
         placeholder={Description ?? ""}
         maxLength={field.fieldLength ?? undefined}
       />
-      {Help && <span className="text-muted-foreground text-xs">{Help}</span>}
+      {Help && <FieldHelp text={Help} />}
     </div>
+  );
+}
+
+// ponytail: FK lookup Select — fetches options from reference table model.
+// Stores {id, identifier} on change so API write sends correct object shape.
+function FKSelect({
+  field,
+  value,
+  onChange,
+  readOnly,
+}: {
+  field: WindowField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  readOnly: boolean;
+}) {
+  const { Name: label, Description, Help } = field;
+  const [options, setOptions] = React.useState<{ id: number; name: string }[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+
+  const modelName = field.reference?.["model-name"];
+  const currentId = extractFkId(value);
+  const currentLabel = extractFkLabel(value);
+
+  React.useEffect(() => {
+    if (!modelName || readOnly) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = getTokenFromStorage();
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+        const resp = await getModels<{ id: number; Name?: string; name?: string }>(modelName, token, {
+          select: "Name",
+          orderby: "Name asc",
+          top: 200,
+        });
+        if (!cancelled) {
+          setOptions(resp.records.map((r) => ({ id: r.id, name: r.Name ?? r.name ?? `#${r.id}` })));
+          setError(false);
+        }
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modelName, readOnly]);
+
+  const label2 = (
+    <Label>
+      {label}
+      {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
+    </Label>
+  );
+
+  if (readOnly) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        {label2}
+        <Input value={currentLabel} disabled readOnly />
+      </div>
+    );
+  }
+
+  if (error || !modelName) {
+    // ponytail: fallback to text input if reference model is unknown or fetch fails
+    return (
+      <div className="flex flex-col gap-1.5">
+        {label2}
+        <Input value={currentLabel} onChange={(e) => onChange(e.target.value)} placeholder={Description ?? ""} />
+        {Help && <FieldHelp text={Help} />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {label2}
+      <Select
+        value={currentId ? String(currentId) : undefined}
+        onValueChange={(v) => {
+          const id = Number(v);
+          const opt = options.find((o) => o.id === id);
+          onChange(opt ? { id: opt.id, identifier: opt.name } : { id });
+        }}
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={loading ? "Loading..." : (Description ?? "Select...")} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.id} value={String(opt.id)}>
+              {opt.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {Help && <FieldHelp text={Help} />}
+    </div>
+  );
+}
+
+/** Extract id from FK value: {id, identifier} | number | undefined */
+function extractFkId(value: unknown): number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value === "object" && value !== null && "id" in value) {
+    return (value as { id: number }).id;
+  }
+  return undefined;
+}
+
+/** Extract display label from FK value: {identifier} | string | undefined */
+function extractFkLabel(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "identifier" in value) {
+    return (value as { identifier?: string }).identifier ?? "";
+  }
+  return "";
+}
+
+/**
+ * Map iDempiere ColumnSpan (1-5 in a 12-col grid) to responsive Tailwind classes.
+ * ponytail: wide fields (Span≥4 → Name, Description) take full row; medium → half; small → third.
+ */
+function fieldGridSpan(columnSpan?: number): string {
+  switch (columnSpan) {
+    case 4:
+    case 5:
+      return "sm:col-span-2 lg:col-span-3"; // ponytail: full width on all breakpoints
+    case 3:
+      return "sm:col-span-2 lg:col-span-2"; // ponytail: half on desktop
+    default:
+      return "sm:col-span-1 lg:col-span-1"; // ponytail: 1/2 or 1/3
+  }
+}
+
+/** Click-to-open help popover — replaces wall-of-text under each field. */
+function FieldHelp({ text }: { text: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
+        >
+          <HelpCircle className="size-3" />
+          <span>Info</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 text-sm" side="top">
+        {text}
+      </PopoverContent>
+    </Popover>
   );
 }
