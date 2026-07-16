@@ -133,33 +133,21 @@ export function PartnerTabsView({
                             <h3 className="font-medium text-foreground text-sm tracking-wide">{b.label}</h3>
                           </div>
                         )}
-                        {/* ponytail: group fields into visual rows, then position by XPosition in 9-col grid */}
-                        {(() => {
-                          const rows = packFieldsIntoRows(b.fields);
-                          return (
-                            <div className="space-y-3">
-                              {rows.map((row, ri) => (
-                                <div
-                                  // biome-ignore lint/suspicious/noArrayIndexKey: rows are stable
-                                  key={ri}
-                                  className="grid gap-x-4 gap-y-3"
-                                  style={{ gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }}
-                                >
-                                  {row.map((f) => (
-                                    <FieldPositioner key={f.columnName} field={f}>
-                                      <FieldInput
-                                        field={f}
-                                        value={data?.[f.columnName]}
-                                        onChange={(v) => onDataChange(f.columnName, v)}
-                                        readOnly={(readOnly ?? false) || f.isReadOnly === true}
-                                      />
-                                    </FieldPositioner>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {b.fields.map((f) => {
+                            const span = fieldGridSpan(f.columnSpan);
+                            return (
+                              <div key={f.columnName} className={span}>
+                                <FieldInput
+                                  field={f}
+                                  value={data?.[f.columnName]}
+                                  onChange={(v) => onDataChange(f.columnName, v)}
+                                  readOnly={(readOnly ?? false) || f.isReadOnly === true}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -486,46 +474,19 @@ function extractFkLabel(value: unknown): string {
 }
 
 /**
- * Pack fields into visual rows for a 9-column grid.
- * ponytail: iDempiere IsSameLine grouping breaks when hidden fields (Tenant/Org)
- * disrupt the row chain. This algorithm uses IsSameLine to group, and falls back
- * to row breaks when IsSameLine=false (the default for most fields).
- * Each IsSameLine=false starts a new row, matching the ZK form renderer.
+ * Map iDempiere ColumnSpan (1-5 in a 12-col grid) to responsive Tailwind classes.
+ * ponytail: wide fields (Span≥4 → Name, Description) take full row; medium → half; small → third.
  */
-function packFieldsIntoRows(fields: WindowField[]): WindowField[][] {
-  const rows: WindowField[][] = [];
-  for (const f of fields) {
-    if (rows.length > 0 && !f.isSameLine) {
-      rows.push([]);
-    }
-    if (rows.length === 0) {
-      rows.push([]);
-    }
-    rows[rows.length - 1].push(f);
+function fieldGridSpan(columnSpan?: number): string {
+  switch (columnSpan) {
+    case 4:
+    case 5:
+      return "sm:col-span-2 lg:col-span-3"; // ponytail: full width on all breakpoints
+    case 3:
+      return "sm:col-span-2 lg:col-span-2"; // ponytail: half on desktop
+    default:
+      return "sm:col-span-1 lg:col-span-1"; // ponytail: 1/2 or 1/3
   }
-  // Remove empty trailing row
-  if (rows.length > 0 && rows[rows.length - 1].length === 0) {
-    rows.pop();
-  }
-  return rows;
-}
-
-/**
- * Position a field within an iDempiere 9-column CSS grid row.
- * XPosition (1-9) → grid-column-start, ColumnSpan (1-5) → grid-column span.
- * ponytail: fallback to auto placement when XPosition is missing.
- */
-function FieldPositioner({ field, children }: { field: WindowField; children: React.ReactNode }) {
-  const xp = field.xPosition;
-  const cs = field.columnSpan;
-  if (!xp || !cs) {
-    return <div className="min-w-0">{children}</div>;
-  }
-  return (
-    <div className="min-w-0" style={{ gridColumn: `${xp} / span ${cs}` }}>
-      {children}
-    </div>
-  );
 }
 
 /** Click-to-open help popover — replaces wall-of-text under each field. */
