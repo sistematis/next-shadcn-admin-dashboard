@@ -133,21 +133,45 @@ export function PartnerTabsView({
                             <h3 className="font-medium text-foreground text-sm tracking-wide">{b.label}</h3>
                           </div>
                         )}
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                          {b.fields.map((f) => {
-                            const span = fieldGridSpan(f.columnSpan);
-                            return (
-                              <div key={f.columnName} className={span}>
-                                <FieldInput
-                                  field={f}
-                                  value={data?.[f.columnName]}
-                                  onChange={(v) => onDataChange(f.columnName, v)}
-                                  readOnly={(readOnly ?? false) || f.isReadOnly === true}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {/* ponytail: group fields into rows by IsSameLine, then position by XPosition */}
+                        {(() => {
+                          type Row = { cols: (typeof fields)[number][] };
+                          const rows: Row[] = [];
+                          let current: Row = { cols: [] };
+                          for (const f of b.fields) {
+                            if (current.cols.length > 0 && !f.isSameLine) {
+                              rows.push(current);
+                              current = { cols: [] };
+                            }
+                            current.cols.push(f);
+                          }
+                          if (current.cols.length > 0) rows.push(current);
+                          return (
+                            <div className="space-y-3">
+                              {rows.map((row, i) => (
+                                <div
+                                  // biome-ignore lint/suspicious/noArrayIndexKey: rows have stable order
+                                  key={i}
+                                  className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-12 lg:items-start"
+                                >
+                                  {row.cols.map((f) => {
+                                    const style = fieldGridPosition(f.xPosition, f.columnSpan);
+                                    return (
+                                      <div key={f.columnName} className={style.className} style={style.style}>
+                                        <FieldInput
+                                          field={f}
+                                          value={data?.[f.columnName]}
+                                          onChange={(v) => onDataChange(f.columnName, v)}
+                                          readOnly={(readOnly ?? false) || f.isReadOnly === true}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -474,19 +498,25 @@ function extractFkLabel(value: unknown): string {
 }
 
 /**
- * Map iDempiere ColumnSpan (1-5 in a 12-col grid) to responsive Tailwind classes.
- * ponytail: wide fields (Span≥4 → Name, Description) take full row; medium → half; small → third.
+ * Map iDempiere AD_Field positioning (XPosition + ColumnSpan) to Tailwind 12-col grid.
+ * ponytail: XPosition (1-9) → col-start, ColumnSpan (1-5) → col-span×2 in 12-col grid.
+ * Stacks to 1 col on mobile, 2 col on tablet, full 12-col on desktop.
  */
-function fieldGridSpan(columnSpan?: number): string {
-  switch (columnSpan) {
-    case 4:
-    case 5:
-      return "sm:col-span-2 lg:col-span-3"; // ponytail: full width on all breakpoints
-    case 3:
-      return "sm:col-span-2 lg:col-span-2"; // ponytail: half on desktop
-    default:
-      return "sm:col-span-1 lg:col-span-1"; // ponytail: 1/2 or 1/3
-  }
+function fieldGridPosition(
+  xPosition?: number,
+  columnSpan?: number,
+): { className: string; style?: React.CSSProperties } {
+  // ponytail: iDempiere XPosition is 1-9 in a 9-col grid; map to 12-col grid (× 4/3 rounded).
+  // ColumnSpan (1-5) → grid columns occupied in the 9-col iDempiere model, multiplied by 4/3.
+  const span = Math.min(Math.max(columnSpan ?? 1, 1), 5);
+  const iDempiereCols = span; // each span = 1 col in iDempiere 9-col grid
+  const colSpan = Math.round((iDempiereCols * 12) / 9); // 1→1, 2→3, 3→4, 4→5, 5→7
+  const start = xPosition && xPosition >= 1 ? Math.round((xPosition * 12) / 9) : 1;
+  // ponytail: col-start N requires inline style (Tailwind can't generate arbitrary gridColumnStart).
+  return {
+    className: "",
+    style: { gridColumnStart: Math.min(start, 12), gridColumnEnd: `span ${colSpan}` },
+  };
 }
 
 /** Click-to-open help popover — replaces wall-of-text under each field. */
