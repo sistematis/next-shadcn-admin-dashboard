@@ -96,7 +96,7 @@ export function EntityList({
   const columns = React.useMemo<ReturnType<typeof buildColumns>>(
     () =>
       buildColumns(fields, {
-        onView: (row) => router.push(`${basePath}/${row.id}`),
+        onView: (row) => router.push(`${basePath}/${row.id}?mode=view`),
         onEdit: (row) => router.push(`${basePath}/${row.id}`),
         onToggleActive: async (row) => {
           const newActive = !(row.IsActive !== false);

@@ -3,9 +3,9 @@
 import * as React from "react";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Pencil, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -44,10 +44,12 @@ function formatRef(val: unknown): string {
   return String(val ?? "-");
 }
 
-export default function EditPartnerPage() {
+function PartnerPageInner() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = Number(params.id);
+  const [viewMode, setViewMode] = React.useState(searchParams.get("mode") === "view");
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
   const [initialData, setInitialData] = React.useState<string>("{}");
   const [loading, setLoading] = React.useState(true);
@@ -91,7 +93,7 @@ export default function EditPartnerPage() {
       await updateModel("c_bpartner", id, payload, token);
       toast.success("Business partner updated");
       setInitialData(JSON.stringify(formData));
-      router.push("/dashboard/business-partners");
+      setViewMode(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       toast.error(msg.includes("detail") ? msg : `Failed to save: ${msg}`);
@@ -135,19 +137,35 @@ export default function EditPartnerPage() {
                 <ArrowLeft className="size-4" />
               </Link>
             </Button>
-            <h1 className="font-semibold text-2xl">Edit: {String(formData.Name ?? `#${id}`)}</h1>
+            <h1 className="font-semibold text-2xl">
+              {viewMode ? "View" : "Edit"}: {String(formData.Name ?? `#${id}`)}
+            </h1>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/business-partners">Cancel</Link>
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              <Save className="size-4" />
-              {saving ? "Saving..." : "Save"}
-            </Button>
+            {viewMode ? (
+              <Button onClick={() => setViewMode(false)}>
+                <Pencil className="size-4" />
+                Edit
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" asChild>
+                  <Link href="/dashboard/business-partners">Cancel</Link>
+                </Button>
+                <Button onClick={handleSave} disabled={saving}>
+                  <Save className="size-4" />
+                  {saving ? "Saving..." : "Save"}
+                </Button>
+              </>
+            )}
           </div>
         </div>
-        <EntityTabsView entityId={id} data={formData as EntityRow} onDataChange={handleFieldChange} />
+        <EntityTabsView
+          entityId={id}
+          data={formData as EntityRow}
+          onDataChange={handleFieldChange}
+          readOnly={viewMode}
+        />
 
         {/* ponytail: audit info — collapsible, read-only */}
         {Boolean(formData.Created || formData.Updated) && (
@@ -163,5 +181,14 @@ export default function EditPartnerPage() {
         )}
       </div>
     </ErrorBoundary>
+  );
+}
+
+// ponytail: useSearchParams needs Suspense boundary in Next.js App Router
+export default function EditPartnerPage() {
+  return (
+    <React.Suspense>
+      <PartnerPageInner />
+    </React.Suspense>
   );
 }
