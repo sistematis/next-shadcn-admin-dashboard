@@ -19,6 +19,23 @@ import { EntityTabsView } from "../_components/entity-tabs-view";
 
 type EntityRow = Record<string, unknown> & { id: number };
 
+// ponytail: iDempiere returns UTC timestamps — display as WIB (UTC+7)
+function formatWIB(val: unknown): string {
+  const d = new Date(val as string);
+  if (Number.isNaN(d.getTime())) return String(val ?? "-");
+  return (
+    new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Jakarta",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(d) + " WIB"
+  );
+}
+
 // ponytail: FK refs come as {id, identifier} — extract identifier for display
 function formatRef(val: unknown): string {
   if (typeof val === "object" && val !== null && "identifier" in val) {
@@ -137,9 +154,9 @@ export default function EditPartnerPage() {
           <details className="text-muted-foreground text-xs">
             <summary className="cursor-pointer select-none">Audit Info</summary>
             <div className="mt-2 space-y-1 pl-4">
-              {formData.Created ? <div>Created: {String(formData.Created)}</div> : null}
+              {formData.Created ? <div>Created: {formatWIB(formData.Created)}</div> : null}
               {formData.CreatedBy ? <div>Created by: {formatRef(formData.CreatedBy)}</div> : null}
-              {formData.Updated ? <div>Updated: {String(formData.Updated)}</div> : null}
+              {formData.Updated ? <div>Updated: {formatWIB(formData.Updated)}</div> : null}
               {formData.UpdatedBy ? <div>Updated by: {formatRef(formData.UpdatedBy)}</div> : null}
             </div>
           </details>
