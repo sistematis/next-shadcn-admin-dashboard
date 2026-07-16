@@ -29,8 +29,6 @@ import { BPTable } from "./bp-table";
 import type { BPRow } from "./use-business-partners";
 import { useBusinessPartners } from "./use-business-partners";
 
-const statusFilters = ["All", "Active", "Inactive"];
-
 export function BusinessPartners() {
   const router = useRouter();
   const { data, fields, loading, totalCount, refetch } = useBusinessPartners();
@@ -99,7 +97,8 @@ export function BusinessPartners() {
   const selectedCount = table.getFilteredSelectedRowModel().rows.length;
 
   function setColumnSelectFilter(columnId: string, value: string) {
-    table.getColumn(columnId)?.setFilterValue(value === "All" ? undefined : value);
+    const filterVal = value === "Active" ? "true" : value === "Inactive" ? "false" : undefined;
+    table.getColumn(columnId)?.setFilterValue(filterVal);
     table.setPageIndex(0);
   }
 
@@ -194,10 +193,15 @@ export function BusinessPartners() {
         <div className="flex flex-wrap items-center justify-between gap-3 px-4">
           <div className="flex flex-wrap items-center gap-3">
             <Select
-              value={statusFilters[0]}
+              value={
+                (table.getColumn("IsActive")?.getFilterValue() as string) === "true"
+                  ? "Active"
+                  : (table.getColumn("IsActive")?.getFilterValue() as string) === "false"
+                    ? "Inactive"
+                    : "All"
+              }
               onValueChange={(value: string) => {
-                const filterVal = value === "Active" ? "true" : value === "Inactive" ? "false" : "All";
-                setColumnSelectFilter("IsActive", filterVal);
+                setColumnSelectFilter("IsActive", value);
               }}
             >
               <SelectTrigger size="sm">
@@ -206,7 +210,7 @@ export function BusinessPartners() {
               </SelectTrigger>
               <SelectContent position="popper" align="start">
                 <SelectGroup>
-                  {statusFilters.map((option) => (
+                  {["All", "Active", "Inactive"].map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
                     </SelectItem>

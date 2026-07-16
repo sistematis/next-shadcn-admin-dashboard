@@ -10,7 +10,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { createModel } from "@/lib/idempiere/client";
-import { isSystemField } from "@/lib/idempiere/field-utils";
+import { stripSystemFields } from "@/lib/idempiere/field-utils";
 import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 
 import { PartnerTabsView } from "../_components/partner-tabs-view";
@@ -70,13 +70,4 @@ export default function NewPartnerPage() {
       <PartnerTabsView bpId={null} data={formData as BPRow} onDataChange={handleFieldChange} />
     </div>
   );
-}
-
-function stripSystemFields(data: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(data)) {
-    if (isSystemField(k)) continue;
-    out[k] = v;
-  }
-  return out;
 }

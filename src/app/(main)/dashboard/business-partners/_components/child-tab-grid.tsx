@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { createModel, deleteModel, getModels, updateModel } from "@/lib/idempiere/client";
-import { isSystemField } from "@/lib/idempiere/field-utils";
+import { isSystemField, stripSystemFields } from "@/lib/idempiere/field-utils";
 import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
@@ -229,13 +229,4 @@ function formatCell(val: unknown): string {
   }
   if (typeof val === "boolean") return val ? "Yes" : "No";
   return String(val);
-}
-
-function stripSystemFields(data: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(data)) {
-    if (isSystemField(k)) continue;
-    out[k] = v;
-  }
-  return out;
 }

@@ -121,3 +121,13 @@ export function isPickableField(columnName: string): boolean {
 export function isFormField(columnName: string): boolean {
   return !isSystemField(columnName);
 }
+
+/** Remove system/audit fields from a record before create/update API call */
+export function stripSystemFields(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (isSystemField(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}

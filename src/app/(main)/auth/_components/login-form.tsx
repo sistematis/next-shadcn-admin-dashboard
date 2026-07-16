@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -264,7 +263,12 @@ export function LoginForm() {
 
   if (step === "credentials") {
     return (
-      <form noValidate onSubmit={credentialsForm.handleSubmit(onCredentialsSubmit)} className="flex flex-col gap-4">
+      <form
+        noValidate
+        action="#"
+        onSubmit={credentialsForm.handleSubmit(onCredentialsSubmit)}
+        className="flex flex-col gap-4"
+      >
         <FieldGroup className="gap-4">
           <Controller
             control={credentialsForm.control}
@@ -304,7 +308,13 @@ export function LoginForm() {
           />
         </FieldGroup>
         <div className="flex items-center gap-2">
-          <Checkbox id="remember-me" checked={rememberMe} onCheckedChange={(v) => setRememberMe(v === true)} />
+          <input
+            id="remember-me"
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="size-4 cursor-pointer rounded border-input accent-primary"
+          />
           <label htmlFor="remember-me" className="cursor-pointer select-none text-sm">
             Remember me
           </label>
