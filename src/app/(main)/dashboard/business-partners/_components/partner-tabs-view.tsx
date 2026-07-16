@@ -236,7 +236,7 @@ export function FieldInput({
     return (
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col gap-0.5">
-          <Label htmlFor={key}>{label}</Label>
+          <FieldLabel htmlFor={key} label={label} help={Help} />
           {Description && <span className="text-muted-foreground text-xs">{Description}</span>}
         </div>
         <Switch id={key} checked={checked} onCheckedChange={(v) => onChange(v)} disabled={readOnly} />
@@ -248,10 +248,7 @@ export function FieldInput({
   if (isTextareaField(field)) {
     return (
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={key}>
-          {label}
-          {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-        </Label>
+        <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
         <Textarea
           id={key}
           value={String(value ?? "")}
@@ -261,7 +258,6 @@ export function FieldInput({
           className="min-h-20"
           rows={field.numLines ?? 3}
         />
-        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
@@ -271,10 +267,7 @@ export function FieldInput({
     const numVal = typeof value === "number" ? value : Number(value ?? 0);
     return (
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={key}>
-          {label}
-          {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-        </Label>
+        <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
         <Input
           id={key}
           type="number"
@@ -283,7 +276,6 @@ export function FieldInput({
           disabled={readOnly}
           placeholder={Description ?? ""}
         />
-        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
@@ -293,10 +285,7 @@ export function FieldInput({
     const dateVal = value ? new Date(value as string).toISOString().split("T")[0] : "";
     return (
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={key}>
-          {label}
-          {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-        </Label>
+        <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
         <Input
           id={key}
           type="date"
@@ -305,7 +294,6 @@ export function FieldInput({
           disabled={readOnly}
           placeholder={Description ?? ""}
         />
-        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
@@ -329,10 +317,7 @@ export function FieldInput({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={key}>
-        {label}
-        {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
+      <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
       <Input
         id={key}
         value={strVal}
@@ -341,7 +326,6 @@ export function FieldInput({
         placeholder={Description ?? ""}
         maxLength={field.fieldLength ?? undefined}
       />
-      {Help && <FieldHelp text={Help} />}
     </div>
   );
 }
@@ -401,17 +385,10 @@ function FKSelect({
     };
   }, [modelName, readOnly]);
 
-  const label2 = (
-    <Label>
-      {label}
-      {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-    </Label>
-  );
-
   if (readOnly) {
     return (
       <div className="flex flex-col gap-1.5">
-        {label2}
+        <FieldLabel label={label} isMandatory={field.isMandatory} help={Help} />
         <Input value={currentLabel} disabled readOnly />
       </div>
     );
@@ -421,16 +398,15 @@ function FKSelect({
     // ponytail: fallback to text input if reference model is unknown or fetch fails
     return (
       <div className="flex flex-col gap-1.5">
-        {label2}
+        <FieldLabel label={label} isMandatory={field.isMandatory} help={Help} />
         <Input value={currentLabel} onChange={(e) => onChange(e.target.value)} placeholder={Description ?? ""} />
-        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-1.5">
-      {label2}
+      <FieldLabel label={label} isMandatory={field.isMandatory} help={Help} />
       <Select
         value={currentId ? String(currentId) : undefined}
         onValueChange={(v) => {
@@ -450,7 +426,6 @@ function FKSelect({
           ))}
         </SelectContent>
       </Select>
-      {Help && <FieldHelp text={Help} />}
     </div>
   );
 }
@@ -489,17 +464,36 @@ function fieldGridSpan(columnSpan?: number): string {
   }
 }
 
-/** Click-to-open help popover — replaces wall-of-text under each field. */
+/** Compact label row: field name + mandatory asterisk + help icon inline. Saves vertical space. */
+function FieldLabel({
+  htmlFor,
+  label,
+  isMandatory,
+  help,
+}: {
+  htmlFor?: string;
+  label: string;
+  isMandatory?: boolean;
+  help?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Label htmlFor={htmlFor}>
+        {label}
+        {isMandatory && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
+      {help && <FieldHelp text={help} />}
+    </div>
+  );
+}
+
+/** Click-to-open help popover — icon-only, sits inline next to label. */
 function FieldHelp({ text }: { text: string }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
-        >
-          <HelpCircle className="size-3" />
-          <span>Info</span>
+        <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Field info">
+          <HelpCircle className="size-3.5" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-sm" side="top">
@@ -574,22 +568,15 @@ function ListSelect({
         : String(value ?? "");
     return (
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={key}>
-          {label}
-          {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-        </Label>
+        <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
         <Input id={key} value={display} disabled readOnly />
-        {Help && <FieldHelp text={Help} />}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={key}>
-        {label}
-        {field.isMandatory && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
+      <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
       <Select
         value={currentId || undefined}
         onValueChange={(v) => {
@@ -609,7 +596,6 @@ function ListSelect({
           ))}
         </SelectContent>
       </Select>
-      {Help && <FieldHelp text={Help} />}
     </div>
   );
 }
