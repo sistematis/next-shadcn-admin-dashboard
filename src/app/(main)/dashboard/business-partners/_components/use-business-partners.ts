@@ -48,6 +48,8 @@ export function useBusinessPartners() {
       }
 
       const resp = await getModels<Record<string, unknown>>("c_bpartner", token, {
+        // ponytail: include inactive records — REST API hides IsActive=false by default
+        filter: "IsActive eq true or IsActive eq false",
         orderby: "Name asc",
         top: 100,
       });

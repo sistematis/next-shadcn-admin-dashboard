@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { findWindowIdByName, getWindowFieldLayout, getWindowTabs, getWindowTabsMetadata } from "@/lib/idempiere/client";
+import { getTabsTableNames, getWindowFieldLayout, getWindowTabs, getWindowTabsMetadata } from "@/lib/idempiere/client";
 import type { WindowField, WindowTab } from "@/lib/idempiere/types";
 
 /**
@@ -28,23 +28,32 @@ export function useWindowLayout(windowSlug: string, maxTabLevel = 1) {
       setError(null);
       try {
         const allTabs = await getWindowTabs(windowSlug, "");
-        // ponytail: enrich with tableName from AD_Tab metadata — needed for child CRUD model queries
-        // Wrapped in try/catch because findWindowIdByName can 400 if contains() or $select fails — must not break tab loading
-        let metaTabs: WindowTab[] = [];
+        // ponytail: enrich tableName by querying ad_tab directly with tab IDs we already have.
+        // Old approach (findWindowIdByName → getWindowTabsMetadata) was broken: contains() on ad_window returns 0.
+        let tableNameMap = new Map<number, { tableName: string; parentColumnName?: string }>();
         try {
-          const windowId = await findWindowIdByName(windowSlug, "");
-          if (windowId) {
-            metaTabs = await getWindowTabsMetadata(windowId, "");
-          }
+          tableNameMap = await getTabsTableNames(
+            allTabs.map((t) => t.id),
+            "",
+          );
         } catch {
           /* non-admin or API quirk — child CRUD disabled, tabs still load */
         }
-        const metaById = new Map(metaTabs.map((m) => [m.id, m]));
-        const enriched = allTabs.map((t) => ({
-          ...t,
-          tableName: metaById.get(t.id)?.tableName ?? metaById.get(t.id)?.tableName,
-        }));
-        const useful = enriched.filter((t) => t.TabLevel <= maxTabLevel).sort((a, b) => a.SeqNo - b.SeqNo);
+        const enriched = allTabs.map((t) => {
+          const meta = tableNameMap.get(t.id);
+          return {
+            ...t,
+            tableName: meta?.tableName,
+            parentColumnName: meta?.parentColumnName,
+          };
+        });
+        // ponytail: filter IsActive=false tabs — Windows API returns ALL tabs regardless of IsActive.
+        // Batch ad_tab query only returns active ones, so inactive tabs have no tableName.
+        // Exception: header tab (TabLevel=0) always has tableName from its own field metadata.
+        const useful = enriched
+          .filter((t) => t.TabLevel === 0 || t.tableName)
+          .filter((t) => t.TabLevel <= maxTabLevel)
+          .sort((a, b) => a.SeqNo - b.SeqNo);
         if (cancelled) return;
         setTabs(useful);
 
@@ -52,7 +61,12 @@ export function useWindowLayout(windowSlug: string, maxTabLevel = 1) {
           useful.map(async (t) => {
             try {
               const fields = await getWindowFieldLayout(t.id, "");
-              return [t.slug, fields] as const;
+              // ponytail: inactive tabs (IsActive=false) return 0 fields from ad_field.
+              // Fall back to Windows API which includes fields for inactive tabs.
+              if (fields.length > 0) return [t.slug, fields] as const;
+              const { getWindowFields } = await import("@/lib/idempiere/client");
+              const fallback = await getWindowFields(windowSlug, t.slug, "");
+              return [t.slug, fallback] as const;
             } catch {
               // ponytail: fallback for non-admin roles — basic field list without layout metadata
               const { getWindowFields } = await import("@/lib/idempiere/client");

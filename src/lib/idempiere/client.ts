@@ -365,7 +365,7 @@ export async function getWindowFieldLayout(tabId: number, token: string): Promis
       ColumnSpan: number;
       NumLines: number;
       IsActive: boolean;
-      AD_FieldGroup_ID?: { id: number; identifier?: string };
+      AD_FieldGroup_ID?: { id: number; identifier?: string; Name?: string };
       AD_Column_ID?: {
         id: number;
         identifier?: string;
@@ -377,7 +377,7 @@ export async function getWindowFieldLayout(tabId: number, token: string): Promis
       };
     }>
   >(
-    `/models/ad_field?$filter=AD_Tab_ID eq ${tabId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Column_ID($select=ColumnName,AD_Reference_ID,AD_Reference_Value_ID,FieldLength,IsMandatory),AD_FieldGroup_ID&$select=Name,Description,Help,SeqNo,SeqNoGrid,IsDisplayed,IsDisplayedGrid,IsReadOnly,IsSameLine,DisplayLogic,MandatoryLogic,XPosition,ColumnSpan,NumLines,IsActive,AD_FieldGroup_ID,AD_Column_ID`,
+    `/models/ad_field?$filter=AD_Tab_ID eq ${tabId} and IsActive eq true&$orderby=SeqNo asc&$expand=AD_Column_ID($select=ColumnName,AD_Reference_ID,AD_Reference_Value_ID,FieldLength,IsMandatory),AD_FieldGroup_ID($select=Name)&$select=Name,Description,Help,SeqNo,SeqNoGrid,IsDisplayed,IsDisplayedGrid,IsReadOnly,IsSameLine,DisplayLogic,MandatoryLogic,XPosition,ColumnSpan,NumLines,IsActive,AD_FieldGroup_ID,AD_Column_ID`,
     {
       token,
     },
@@ -404,13 +404,61 @@ export async function getWindowFieldLayout(tabId: number, token: string): Promis
     displayLogic: f.DisplayLogic,
     mandatoryLogic: f.MandatoryLogic,
     fieldGroup: f.AD_FieldGroup_ID
-      ? { id: f.AD_FieldGroup_ID.id, identifier: f.AD_FieldGroup_ID.identifier }
+      ? {
+          id: f.AD_FieldGroup_ID.id,
+          identifier: f.AD_FieldGroup_ID.identifier,
+          // ponytail: Name is the human-readable label for separators ("Customer Information", etc.)
+          name: (f.AD_FieldGroup_ID as { Name?: string }).Name,
+        }
       : undefined,
     referenceType: f.AD_Column_ID?.AD_Reference_ID?.id,
     referenceValueId: f.AD_Column_ID?.AD_Reference_Value_ID?.id,
     fieldLength: f.AD_Column_ID?.FieldLength,
     isMandatory: f.AD_Column_ID?.IsMandatory,
   }));
+}
+
+/**
+ * Batch-enrich tabs with tableName by querying ad_tab directly by tab IDs.
+ * Replaces the broken findWindowIdByName → getWindowTabsMetadata chain.
+ * We already have AD_Tab_IDs from getWindowTabs(), so query by those IDs.
+ *
+ * @param tabIds Array of AD_Tab_ID values from getWindowTabs()
+ */
+/**
+ * Batch-enrich tabs with tableName + parent FK column by querying ad_tab directly by tab IDs.
+ * Returns a Map of tabId → { tableName, parentColumnName }.
+ * REST API only returns IsActive=true records — inactive tabs are correctly excluded.
+ *
+ * @param tabIds Array of AD_Tab_ID values from getWindowTabs()
+ */
+export async function getTabsTableNames(
+  tabIds: number[],
+  token: string,
+): Promise<Map<number, { tableName: string; parentColumnName?: string }>> {
+  if (tabIds.length === 0) return new Map();
+  const filterExpr = tabIds.map((id) => `id eq ${id}`).join(" or ");
+  const data = await apiRequest<
+    QueryResponse<{
+      id: number;
+      AD_Table_ID?: { TableName?: string };
+      AD_Column_ID?: { ColumnName?: string };
+    }>
+  >(
+    `/models/ad_tab?$filter=${filterExpr}&$expand=AD_Table_ID($select=TableName),AD_Column_ID($select=ColumnName)&$select=AD_Table_ID,AD_Column_ID`,
+    { token },
+  );
+  const map = new Map<number, { tableName: string; parentColumnName?: string }>();
+  for (const rec of data.records) {
+    const tn = rec.AD_Table_ID?.TableName;
+    if (tn) {
+      map.set(rec.id, {
+        tableName: tn.toLowerCase(),
+        parentColumnName: rec.AD_Column_ID?.ColumnName,
+      });
+    }
+  }
+  return map;
 }
 
 /**

@@ -154,7 +154,7 @@ export interface WindowField {
   /** Display logic expression, e.g. "@IsCustomer@=Y" (AD_Field.DisplayLogic) */
   displayLogic?: string;
   /** Field group (AD_Field.AD_FieldGroup_ID) */
-  fieldGroup?: { id: number; identifier?: string };
+  fieldGroup?: { id: number; identifier?: string; name?: string };
   /** Mandatory logic expression (AD_Field.MandatoryLogic) */
   mandatoryLogic?: string;
   // ── Column metadata (from AD_Column via $expand) ──
@@ -187,6 +187,10 @@ export interface WindowTab {
   IsSingleRow?: boolean;
   /** Has tree structure */
   HasTree?: boolean;
+  /** FK column linking this tab to its parent tab's table (e.g. "C_BPartner_ID", "AD_User_ID") */
+  parentColumnName?: string;
+  /** AD_Tab_ID of the parent tab (TabLevel-1). Level-0 = no parent. */
+  parentTabId?: number;
 }
 
 /** Extract columnName from the AD_Column_ID.identifier ("ColumnName_DisplayName") */
