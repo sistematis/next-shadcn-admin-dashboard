@@ -18,8 +18,7 @@ import {
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-import type { BPRow } from "./use-business-partners";
+import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 
 function preventPaginationNavigation(event: MouseEvent<HTMLAnchorElement>) {
   event.preventDefault();
@@ -34,7 +33,7 @@ function getPageNumbers(currentPage: number, pageCount: number) {
   return [currentPage - 1, currentPage, currentPage + 1];
 }
 
-export function BPTable({ table }: { table: TableType<BPRow> }) {
+export function EntityTable({ table }: { table: TableType<EntityRow> }) {
   const pageCount = Math.max(table.getPageCount(), 1);
   const currentPage = Math.min(table.getState().pagination.pageIndex + 1, pageCount);
   const pageNumbers = getPageNumbers(currentPage, pageCount);
@@ -42,7 +41,7 @@ export function BPTable({ table }: { table: TableType<BPRow> }) {
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div>
-        <Table className="**:data-[slot='table-cell']:px-4 **:data-[slot='table-head']:px-4">
+        <Table className="table-sticky-first **:data-[slot='table-cell']:px-4 **:data-[slot='table-head']:px-4">
           <TableHeader className="[&_tr]:border-t">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -89,7 +88,7 @@ export function BPTable({ table }: { table: TableType<BPRow> }) {
             ) : (
               <TableRow>
                 <TableCell colSpan={table.getVisibleLeafColumns().length} className="h-24 text-center">
-                  No business partners found.
+                  No records found.
                 </TableCell>
               </TableRow>
             )}
@@ -107,7 +106,7 @@ export function BPTable({ table }: { table: TableType<BPRow> }) {
               value={`${table.getState().pagination.pageSize}`}
               onValueChange={(value) => table.setPageSize(Number(value))}
             >
-              <SelectTrigger size="sm" className="w-20" id="bp-rows-per-page">
+              <SelectTrigger size="sm" className="w-20" id="entity-rows-per-page">
                 <SelectValue placeholder={`${table.getState().pagination.pageSize}`} />
               </SelectTrigger>
               <SelectContent side="top">

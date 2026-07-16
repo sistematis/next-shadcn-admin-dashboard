@@ -282,3 +282,15 @@ html {
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ponytail: sticky first column for entity tables — keeps Name visible when scrolling horizontally */
+.table-sticky-first td:first-child,
+.table-sticky-first th:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--color-background);
+  z-index: 1;
+}
+.table-sticky-first tbody tr:hover td:first-child {
+  background: var(--color-muted);
+}

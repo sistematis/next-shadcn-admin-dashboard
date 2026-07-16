@@ -6,6 +6,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,7 @@ import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
 // biome-ignore lint/suspicious/noImportCycles: parent-child cycle is harmless for tree-shaking
-import { FieldInput } from "./partner-tabs-view";
+import { FieldInput } from "./entity-tabs-view";
 
 // ponytail: child tab CRUD grid — queries child model filtered by parent FK, renders inline table + add/edit dialog
 type ChildRow = Record<string, unknown> & { id: number };
@@ -39,6 +40,7 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
   const [editing, setEditing] = React.useState<ChildRow | null>(null);
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
   const [saving, setSaving] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<ChildRow | null>(null);
 
   const formFields = React.useMemo(
     () =>
@@ -89,14 +91,21 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
   }
 
   async function handleDelete(row: ChildRow) {
+    setDeleteTarget(row);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
     const token = getTokenFromStorage();
     if (!token) return;
     try {
-      await deleteModel(tableName, row.id, token);
+      await deleteModel(tableName, deleteTarget.id, token);
       toast.success("Deleted");
       await fetchChild();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteTarget(null);
     }
   }
 
@@ -218,6 +227,16 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete record?"
+        description="This action cannot be undone. The record will be permanently removed."
+        confirmText="Delete"
+        destructive
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

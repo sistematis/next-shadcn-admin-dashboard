@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { APP_CONFIG } from "@/config/app-config";
 import { fontVars } from "@/lib/fonts/registry";
 import { AuthProvider } from "@/lib/idempiere/auth-context";
+import { QueryProvider } from "@/lib/idempiere/query-provider";
 import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { ThemeBootScript } from "@/scripts/theme-boot";
 import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provider";
@@ -40,10 +41,12 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body className={`${fontVars} min-h-screen antialiased`}>
         <TooltipProvider>
           <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
-            <AuthProvider>
-              {children}
-              <Toaster />
-            </AuthProvider>
+            <QueryProvider>
+              <AuthProvider>
+                {children}
+                <Toaster />
+              </AuthProvider>
+            </QueryProvider>
           </PreferencesStoreProvider>
         </TooltipProvider>
       </body>
