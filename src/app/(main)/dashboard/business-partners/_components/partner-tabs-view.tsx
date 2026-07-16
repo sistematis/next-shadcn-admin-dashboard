@@ -133,28 +133,19 @@ export function PartnerTabsView({
                             <h3 className="font-medium text-foreground text-sm tracking-wide">{b.label}</h3>
                           </div>
                         )}
-                        {/* ponytail: group fields into rows by IsSameLine, position by XPosition via flex */}
+                        {/* ponytail: group fields into visual rows, then position by XPosition in 9-col grid */}
                         {(() => {
-                          type Row = { cols: (typeof fields)[number][] };
-                          const rows: Row[] = [];
-                          let current: Row = { cols: [] };
-                          for (const f of b.fields) {
-                            if (current.cols.length > 0 && !f.isSameLine) {
-                              rows.push(current);
-                              current = { cols: [] };
-                            }
-                            current.cols.push(f);
-                          }
-                          if (current.cols.length > 0) rows.push(current);
+                          const rows = packFieldsIntoRows(b.fields);
                           return (
                             <div className="space-y-3">
                               {rows.map((row, ri) => (
                                 <div
                                   // biome-ignore lint/suspicious/noArrayIndexKey: rows are stable
                                   key={ri}
-                                  className="flex flex-wrap gap-x-4 gap-y-3"
+                                  className="grid gap-x-4 gap-y-3"
+                                  style={{ gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }}
                                 >
-                                  {row.cols.map((f) => (
+                                  {row.map((f) => (
                                     <FieldPositioner key={f.columnName} field={f}>
                                       <FieldInput
                                         field={f}
@@ -495,28 +486,43 @@ function extractFkLabel(value: unknown): string {
 }
 
 /**
- * Position a field within an iDempiere form row.
- * XPosition (1-9) maps to left offset in a 9-column grid: left = (XPos-1)/9 * 100%.
- * ColumnSpan (1-5) maps to width: width = span/9 * 100%.
- * ponytail: fallback to left-aligned auto-width when XPosition is missing.
+ * Pack fields into visual rows for a 9-column grid.
+ * ponytail: iDempiere IsSameLine grouping breaks when hidden fields (Tenant/Org)
+ * disrupt the row chain. This algorithm uses IsSameLine to group, and falls back
+ * to row breaks when IsSameLine=false (the default for most fields).
+ * Each IsSameLine=false starts a new row, matching the ZK form renderer.
+ */
+function packFieldsIntoRows(fields: WindowField[]): WindowField[][] {
+  const rows: WindowField[][] = [];
+  for (const f of fields) {
+    if (rows.length > 0 && !f.isSameLine) {
+      rows.push([]);
+    }
+    if (rows.length === 0) {
+      rows.push([]);
+    }
+    rows[rows.length - 1].push(f);
+  }
+  // Remove empty trailing row
+  if (rows.length > 0 && rows[rows.length - 1].length === 0) {
+    rows.pop();
+  }
+  return rows;
+}
+
+/**
+ * Position a field within an iDempiere 9-column CSS grid row.
+ * XPosition (1-9) → grid-column-start, ColumnSpan (1-5) → grid-column span.
+ * ponytail: fallback to auto placement when XPosition is missing.
  */
 function FieldPositioner({ field, children }: { field: WindowField; children: React.ReactNode }) {
   const xp = field.xPosition;
   const cs = field.columnSpan;
   if (!xp || !cs) {
-    // No positioning metadata — let flexbox handle it naturally
     return <div className="min-w-0">{children}</div>;
   }
-  const left = ((xp - 1) / 9) * 100;
-  const width = (cs / 9) * 100;
   return (
-    <div
-      className="min-w-0 shrink-0"
-      style={{
-        marginLeft: `${left}%`,
-        width: `${width}%`,
-      }}
-    >
+    <div className="min-w-0" style={{ gridColumn: `${xp} / span ${cs}` }}>
       {children}
     </div>
   );
