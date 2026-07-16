@@ -5,6 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Pencil, Save } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +49,7 @@ function PartnerPageInner() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const qc = useQueryClient();
   const id = Number(params.id);
   const [viewMode, setViewMode] = React.useState(searchParams.get("mode") === "view");
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
@@ -94,6 +96,8 @@ function PartnerPageInner() {
       toast.success("Business partner updated");
       setInitialData(JSON.stringify(formData));
       setViewMode(false);
+      // ponytail: invalidate list cache so Back shows fresh data
+      qc.invalidateQueries({ queryKey: ["entity", "c_bpartner"] });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       toast.error(msg.includes("detail") ? msg : `Failed to save: ${msg}`);
