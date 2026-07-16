@@ -30,7 +30,9 @@ import { useWindowLayout } from "@/lib/idempiere/use-window-layout";
 import { ChildTabGrid } from "./child-tab-grid";
 import type { BPRow } from "./use-business-partners";
 
-const MAX_TAB_LEVEL = 1;
+const MAX_TAB_LEVEL = 2;
+// ponytail: BP window header table — extension tabs (Customer/Vendor/Employee) share it
+const HEADER_TABLE = "c_bpartner";
 
 interface PartnerTabsViewProps {
   windowSlug?: string; // default: "business-partner"
@@ -77,41 +79,141 @@ export function PartnerTabsView({
         const fields = (fieldsByTab[tab.slug] ?? [])
           .filter((f) => f.isDisplayed !== false && isFormField(f.columnName))
           .sort((a, b) => (a.seqNo ?? 999) - (b.seqNo ?? 999));
-        // ponytail: child tabs show editable grid with Add/Edit/Delete
-        const isChildTab = tab.TabLevel > 0;
+        const isLevel2 = tab.TabLevel === 2;
+        // ponytail: child tabs (level 1+) with their own table show editable grid
+        const isChildTab = tab.TabLevel > 0 && tab.tableName !== HEADER_TABLE;
+        // ponytail: level-2 tabs link via parentColumnName (AD_User_ID) to Contact tab
+        const parentCol = tab.parentColumnName ?? "C_BPartner_ID";
         return (
           <TabsContent key={tab.slug} value={tab.slug} className="mt-4">
-            {/* biome-ignore lint/style/noNestedTernary: three-way branch is clear here */}
             {isChildTab && bpId && tab.tableName ? (
-              <ChildTabGrid
-                tableName={tab.tableName}
-                parentColumnName="C_BPartner_ID"
-                parentId={bpId}
-                fields={fieldsByTab[tab.slug] ?? []}
-              />
+              isLevel2 ? (
+                <Level2TabGrid
+                  tableName={tab.tableName}
+                  parentColumnName={parentCol}
+                  bpId={bpId}
+                  fields={fieldsByTab[tab.slug] ?? []}
+                />
+              ) : (
+                <ChildTabGrid
+                  tableName={tab.tableName}
+                  parentColumnName={parentCol}
+                  parentId={bpId}
+                  fields={fieldsByTab[tab.slug] ?? []}
+                />
+              )
             ) : isChildTab ? (
               <p className="text-muted-foreground text-sm italic">Save the record first to add child records.</p>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {fields.map((f) => {
-                  const span = fieldGridSpan(f.columnSpan);
-                  return (
-                    <div key={f.columnName} className={span}>
-                      <FieldInput
-                        field={f}
-                        value={data?.[f.columnName]}
-                        onChange={(v) => onDataChange(f.columnName, v)}
-                        readOnly={(readOnly ?? false) || f.isReadOnly === true}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+              // ponytail: render fields grouped by AD_FieldGroup.Name (Customer Information, Vendor Information, etc.)
+              // Ungrouped fields stay in the default section without a header.
+              (() => {
+                // Group buckets, preserving seqNo order across groups
+                type Bucket = { key: string; label: string | null; fields: typeof fields };
+                const buckets: Bucket[] = [];
+                const bucketIndex = new Map<string, Bucket>();
+                const DEFAULT_KEY = "__default__";
+                for (const f of fields) {
+                  const gname = f.fieldGroup?.name ?? null;
+                  const key = gname ?? DEFAULT_KEY;
+                  let bucket = bucketIndex.get(key);
+                  if (!bucket) {
+                    bucket = { key, label: gname, fields: [] };
+                    buckets.push(bucket);
+                    bucketIndex.set(key, bucket);
+                  }
+                  bucket.fields.push(f);
+                }
+                return (
+                  <div className="space-y-6">
+                    {buckets.map((b) => (
+                      <div key={b.key} className="space-y-3">
+                        {b.label && (
+                          <div className="border-border/60 border-b pb-1">
+                            <h3 className="font-medium text-foreground text-sm tracking-wide">{b.label}</h3>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {b.fields.map((f) => {
+                            const span = fieldGridSpan(f.columnSpan);
+                            return (
+                              <div key={f.columnName} className={span}>
+                                <FieldInput
+                                  field={f}
+                                  value={data?.[f.columnName]}
+                                  onChange={(v) => onDataChange(f.columnName, v)}
+                                  readOnly={(readOnly ?? false) || f.isReadOnly === true}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()
             )}
           </TabsContent>
         );
       })}
     </Tabs>
+  );
+}
+
+/**
+ * Level2TabGrid — renders level-2 child records (Interest Area, BP Access).
+ * These tabs link to a Contact (ad_user), not directly to the BP.
+ * Fetches the first contact for this BP, then renders ChildTabGrid with AD_User_ID as parent.
+ */
+function Level2TabGrid({
+  tableName,
+  parentColumnName,
+  bpId,
+  fields,
+}: {
+  tableName: string;
+  parentColumnName: string;
+  bpId: number;
+  fields: WindowField[];
+}) {
+  const [contactId, setContactId] = React.useState<number | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = getTokenFromStorage();
+        if (!token) return;
+        // ponytail: get first contact for this BP — level-2 records link via AD_User_ID
+        const resp = await getModels<{ id: number }>("ad_user", token, {
+          filter: `C_BPartner_ID eq ${bpId}`,
+          orderby: "id asc",
+          top: 1,
+        });
+        if (!cancelled && resp.records.length > 0) {
+          setContactId(resp.records[0].id);
+        }
+      } catch {
+        /* no contacts — grid stays empty */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bpId]);
+
+  if (loading) return <p className="text-muted-foreground text-sm">Loading...</p>;
+  if (!contactId) {
+    return (
+      <p className="text-muted-foreground text-sm italic">No contact found. Add a contact in the Contact tab first.</p>
+    );
+  }
+  return (
+    <ChildTabGrid tableName={tableName} parentColumnName={parentColumnName} parentId={contactId} fields={fields} />
   );
 }
 
@@ -425,7 +527,6 @@ function ListSelect({
   const [loading, setLoading] = React.useState(true);
 
   // ponytail: extract id from {id, identifier} or raw string
-  // biome-ignore lint/style/noNestedTernary: three-way extraction is readable
   const currentId =
     typeof value === "object" && value !== null && "id" in value
       ? String((value as { id: string }).id)
