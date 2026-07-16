@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { deleteModel } from "@/lib/idempiere/client";
+import { deleteModel, updateModel } from "@/lib/idempiere/client";
 import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 
 import { buildColumns } from "./bp-columns";
@@ -42,8 +42,22 @@ export function BusinessPartners() {
       buildColumns(fields, {
         onView: (row) => router.push(`/dashboard/business-partners/${row.id}`),
         onEdit: (row) => router.push(`/dashboard/business-partners/${row.id}`),
+        onToggleActive: async (row) => {
+          const newActive = !(row.IsActive === false ? false : true);
+          try {
+            const token = getTokenFromStorage();
+            if (!token) return;
+            await updateModel("c_bpartner", row.id, { IsActive: newActive }, token);
+            toast.success(`${newActive ? "Activated" : "Deactivated"} ${row.Name ?? "record"}`);
+            await refetch();
+          } catch (err) {
+            toast.error("Failed to toggle active status", {
+              description: err instanceof Error ? err.message : "Unknown error",
+            });
+          }
+        },
       }),
-    [fields, router],
+    [fields, router, refetch],
   );
 
   const [rowSelection, setRowSelection] = React.useState({});

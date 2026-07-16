@@ -2,7 +2,7 @@
 "use no memo";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, MoreHorizontal } from "lucide-react";
+import { Check, MoreHorizontal, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ const TABLE_HIDDEN = new Set(["search", "select", "actions"]);
 export interface RowActions {
   onView: (row: BPRow) => void;
   onEdit: (row: BPRow) => void;
+  onToggleActive: (row: BPRow) => void;
 }
 
 export function buildColumns(fields: WindowField[], actions?: RowActions): ColumnDef<BPRow>[] {
@@ -98,7 +99,13 @@ export function buildColumns(fields: WindowField[], actions?: RowActions): Colum
             <DropdownMenuItem onClick={() => actions?.onView(row.original)}>View details</DropdownMenuItem>
             <DropdownMenuItem onClick={() => actions?.onEdit(row.original)}>Edit partner</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive">Deactivate</DropdownMenuItem>
+            {/* biome-ignore lint/style/noNestedTernary: two-way toggle */}
+            <DropdownMenuItem
+              variant={row.original.IsActive === false ? "default" : "destructive"}
+              onClick={() => actions?.onToggleActive(row.original)}
+            >
+              {row.original.IsActive === false ? "Activate" : "Deactivate"}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -125,6 +132,14 @@ function buildColumnDef(f: WindowField): ColumnDef<BPRow> | null {
       ...sortingEnabled,
       cell: ({ row }) => {
         const val = row.original[key];
+        // ponytail: IsActive=false → "Inactive" badge; other booleans stay empty when false
+        if (!val && key === "IsActive") {
+          return (
+            <Badge variant="outline" className="gap-1 text-red-600">
+              <X className="size-3" /> Inactive
+            </Badge>
+          );
+        }
         return val ? (
           <Badge variant="outline" className="gap-1 text-emerald-600">
             <Check className="size-3" /> {label}
