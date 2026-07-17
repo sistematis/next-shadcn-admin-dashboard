@@ -75,6 +75,23 @@ function isRecordLocked(data: Record<string, unknown>): boolean {
   return data.Processed === true || data.DocStatus === "CO";
 }
 
+// ponytail: record display name — Name/DocumentNo first, else first non-system FK identifier.
+// Junction tables (R_ContactInterest) have no Name; their identity is the linked record's identifier.
+const SYSTEM_FK_COLUMNS = new Set(["AD_Client_ID", "AD_Org_ID", "CreatedBy", "UpdatedBy"]);
+function recordDisplayName(data: Record<string, unknown>, parentColumnName?: string): string {
+  if (data.Name) return String(data.Name);
+  if (data.DocumentNo) return String(data.DocumentNo);
+  for (const [key, val] of Object.entries(data)) {
+    if (key === parentColumnName || SYSTEM_FK_COLUMNS.has(key)) continue;
+    if (val && typeof val === "object" && "identifier" in val) {
+      const identifier = (val as { identifier?: unknown }).identifier;
+      if (identifier) return String(identifier);
+    }
+  }
+  if (data.Value) return String(data.Value);
+  return "";
+}
+
 // ponytail: build breadcrumb links + after-create target from the drill ancestor chain.
 // First ancestor is the header (route = basePath/{id}); the rest append /{tabSlug}/{id}.
 function buildAncestorRoutes(basePath: string, drillPath: { tabSlug: string; id: number }[]): string[] {
@@ -134,7 +151,9 @@ function EntityFormPageInner({
   });
   const ancestorNames = (drillPath ?? []).map((seg, i) => {
     const rec = ancestorQueries[i]?.data as EntityRow | null | undefined;
-    return rec?.Name ? String(rec.Name) : `#${seg.id}`;
+    if (!rec) return `#${seg.id}`;
+    const segTab = tabs.find((t) => t.slug === seg.tabSlug);
+    return recordDisplayName(rec, segTab?.parentColumnName) || `#${seg.id}`;
   });
   const parentRoute = ancestorRoutes.length > 0 ? ancestorRoutes[ancestorRoutes.length - 1] : basePath;
 
@@ -209,7 +228,7 @@ function EntityFormPageInner({
     );
   }
 
-  const entityName = formData.Name ? String(formData.Name) : isEditMode ? `#${entityId}` : "";
+  const entityName = isEditMode ? recordDisplayName(formData, currentTab?.parentColumnName) : "";
 
   return (
     <ErrorBoundary>
@@ -228,16 +247,27 @@ function EntityFormPageInner({
                     <Link href={basePath}>{title}s</Link>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
-                {(drillPath ?? []).map((seg, i) => (
-                  <React.Fragment key={`${seg.tabSlug}-${seg.id}`}>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbLink asChild>
-                        <Link href={ancestorRoutes[i]}>{ancestorNames[i]}</Link>
-                      </BreadcrumbLink>
-                    </BreadcrumbItem>
-                  </React.Fragment>
-                ))}
+                {(drillPath ?? []).map((seg, i) => {
+                  const segTab = tabs.find((t) => t.slug === seg.tabSlug);
+                  return (
+                    <React.Fragment key={`${seg.tabSlug}-${seg.id}`}>
+                      {segTab && segTab.TabLevel > 0 && (
+                        <>
+                          <BreadcrumbSeparator />
+                          <BreadcrumbItem>
+                            <BreadcrumbPage>{segTab.Name}</BreadcrumbPage>
+                          </BreadcrumbItem>
+                        </>
+                      )}
+                      <BreadcrumbSeparator />
+                      <BreadcrumbItem>
+                        <BreadcrumbLink asChild>
+                          <Link href={ancestorRoutes[i]}>{ancestorNames[i]}</Link>
+                        </BreadcrumbLink>
+                      </BreadcrumbItem>
+                    </React.Fragment>
+                  );
+                })}
                 {currentTab && currentTab.TabLevel > 0 && (
                   <>
                     <BreadcrumbSeparator />
