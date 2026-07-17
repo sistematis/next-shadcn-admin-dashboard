@@ -258,7 +258,7 @@ export function useFKOptions(modelName: string | undefined) {
   return useQuery({
     queryKey: qk.fkOptions(modelName ?? ""),
     queryFn: async () => {
-      if (!modelName) return [];
+      if (!modelName) return { options: [], truncated: false };
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
       const resp = await getModels<{ id: number; Name?: string; name?: string }>(modelName, token, {
@@ -266,7 +266,11 @@ export function useFKOptions(modelName: string | undefined) {
         orderby: "Name asc",
         top: 200,
       });
-      return resp.records.map((r) => ({ id: r.id, name: r.Name ?? r.name ?? `#${r.id}` }));
+      const options = resp.records.map((r) => ({ id: r.id, name: r.Name ?? r.name ?? `#${r.id}` }));
+      // ponytail: signal the top:200 cap so the combobox isn't silently truncated
+      // (server-side combobox search is the real fix — this just makes the limit visible)
+      const truncated = (resp["row-count"] ?? options.length) > options.length;
+      return { options, truncated };
     },
     enabled: !!modelName,
     staleTime: 10 * 60 * 1000, // ponytail: 10min — reference data changes rarely
@@ -306,7 +310,9 @@ export function useChildRecords(tableName: string, parentColumnName: string, par
         orderby: "id asc",
         top: 200,
       });
-      return resp.records;
+      // ponytail: child grids cap at top:200 client-side — surface truncation instead of silently dropping rows
+      const truncated = (resp["row-count"] ?? resp.records.length) > resp.records.length;
+      return { rows: resp.records, truncated };
     },
     enabled: !!tableName && !!parentId,
     staleTime: 30_000, // ponytail: 30sec — child data changes rarely

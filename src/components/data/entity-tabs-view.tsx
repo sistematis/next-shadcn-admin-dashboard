@@ -317,7 +317,9 @@ function FKSelect({
 }) {
   const { Name: label, Description, Help } = field;
   const modelName = field.reference?.["model-name"];
-  const { data: options = [], isLoading } = useFKOptions(modelName);
+  const { data, isLoading } = useFKOptions(modelName);
+  const options = data?.options ?? [];
+  const truncated = data?.truncated ?? false;
 
   const currentLabel = extractFkLabel(value);
 
@@ -363,6 +365,11 @@ function FKSelect({
                   {opt.name}
                 </CommandItem>
               ))}
+              {truncated && (
+                <div className="px-2 py-1.5 text-muted-foreground text-xs">
+                  Showing first 200 — more options exist on the server.
+                </div>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>

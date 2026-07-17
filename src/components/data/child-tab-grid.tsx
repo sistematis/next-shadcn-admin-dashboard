@@ -43,7 +43,9 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
   const pathname = usePathname();
   // ponytail: child route = current page + tabSlug; rows append /{id}, Add appends /new
   const childBase = `${pathname}/${tabSlug}`;
-  const { data: rows = [], isPending: loading } = useChildRecords(tableName, parentColumnName, parentId);
+  const { data, isPending: loading } = useChildRecords(tableName, parentColumnName, parentId);
+  const rows = data?.rows ?? [];
+  const truncated = data?.truncated ?? false;
   const deleteMut = useBulkDelete(tableName);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -147,6 +149,9 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
         <p className="text-muted-foreground text-sm italic">No records. Click Add to create one.</p>
       ) : (
         <EntityTable table={table} basePath={childBase} resolveRowId={rowIdOf} />
+      )}
+      {truncated && rows.length > 0 && (
+        <p className="text-muted-foreground text-xs">Showing first 200 records — more exist on the server.</p>
       )}
 
       <ConfirmDialog
