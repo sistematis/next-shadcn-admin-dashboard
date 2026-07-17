@@ -9,7 +9,7 @@ import { Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
-import { isBooleanField, isFKField, isNumberField, isPickableField } from "@/lib/idempiere/field-utils";
+import { AD_REF, isBooleanField, isFKField, isNumberField, isPickableField } from "@/lib/idempiere/field-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
 // Columns excluded from the column picker (internal/helper columns)
@@ -54,7 +54,6 @@ export function buildColumns(
   let primaryAttached = false;
   for (const f of gridFields) {
     if (!isPickableField(f.columnName)) continue;
-    if (TABLE_HIDDEN.has(f.columnName)) continue;
     const col = buildColumnDef(f);
     if (!col) continue;
     const linkIt = !primaryAttached && !!rowHref;
@@ -112,13 +111,19 @@ function buildColumnDef(f: WindowField): ColumnDef<EntityRow> | null {
   }
 
   if (isNumberField(f)) {
+    // ponytail: integers (ref 11) render whole; amounts/costs keep 2 decimals
+    const decimals = f.referenceType === AD_REF.INTEGER ? 0 : 2;
     return {
       accessorKey: key,
       header: label,
       ...sortingEnabled,
       cell: ({ row }) => {
         const val = Number(row.original[key] ?? 0);
-        return <div className="text-sm tabular-nums">{val.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>;
+        return (
+          <div className="text-sm tabular-nums">
+            {val.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+          </div>
+        );
       },
     };
   }

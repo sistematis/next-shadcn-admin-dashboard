@@ -257,7 +257,7 @@ export function FieldInput({
   }
 
   if (isDateField(field)) {
-    const dateVal = value ? new Date(value as string).toISOString().split("T")[0] : "";
+    const dateVal = toDateInputValue(value);
     return (
       <div className="flex flex-col gap-1.5">
         <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
@@ -301,6 +301,17 @@ export function FieldInput({
       />
     </div>
   );
+}
+
+// ponytail: format a value for <input type="date"> without the UTC day-shift toISOString causes.
+// Date-only strings pass through; timestamps resolve to local Y/M/D (iDempiere stores UTC, shown as WIB).
+function toDateInputValue(val: unknown): string {
+  if (!val) return "";
+  const s = String(val);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // ponytail: FK lookup — searchable combobox with TanStack Query cache (shared across all FKSelect for same model)
