@@ -107,23 +107,41 @@ export function EntityList({
   const totalCount = data?.totalCount ?? 0;
   const pageCount = data?.pageCount ?? 1;
 
-  // ── Column visibility from metadata ───────────────────────
-  // ponytail: trust IsDisplayedGrid from AD_Field — backend config is source of truth.
-  // Cap initial visible to first 7 by SeqNoGrid for usable table; rest toggleable via column picker.
+  // ── Column visibility from metadata + localStorage ────────
+  // ponytail: trust IsDisplayedGrid from AD_Field as the source of truth.
+  // User column-picker overrides persist to localStorage per-entity so refresh keeps them.
+  const storageKey = `colvis:${modelName}`;
   React.useEffect(() => {
     if (fields.length === 0) return;
+    // Start from AD_Field config: hide everything IsDisplayedGrid=false
     const vis: VisibilityState = {};
-    const gridFields = fields
-      .filter((f) => f.isDisplayedGrid !== false)
-      .sort((a, b) => (a.seqNoGrid ?? 999) - (b.seqNoGrid ?? 999));
-    // Hide fields beyond first 7
-    for (let i = 0; i < gridFields.length; i++) {
-      if (i >= 7 && gridFields[i].columnName) {
-        vis[gridFields[i].columnName] = false;
-      }
+    for (const f of fields) {
+      if (f.columnName && f.isDisplayedGrid === false) vis[f.columnName] = false;
+    }
+    // Apply saved user overrides
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) Object.assign(vis, JSON.parse(saved) as VisibilityState);
+    } catch {
+      /* ponytail: bad JSON, fall back to AD_Field defaults */
     }
     setColumnVisibility(vis);
-  }, [fields]);
+  }, [fields, storageKey]);
+
+  const handleColumnVisibilityChange = React.useCallback(
+    (updater: VisibilityState | ((prev: VisibilityState) => VisibilityState)) => {
+      setColumnVisibility((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          /* quota */
+        }
+        return next;
+      });
+    },
+    [storageKey],
+  );
 
   // ── URL sync ─────────────────────────────────────────────
   React.useEffect(() => {
@@ -185,7 +203,7 @@ export function EntityList({
     onPaginationChange: setPagination,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: handleColumnVisibilityChange,
     getRowId: (row) => row.id.toString(),
     autoResetPageIndex: false,
     enableRowSelection: true,
