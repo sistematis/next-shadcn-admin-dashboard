@@ -3,15 +3,15 @@
 import * as React from "react";
 
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Save } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { getModel, updateModel } from "@/lib/idempiere/client";
+import { useEntityDetail, useUpdateEntity } from "@/lib/idempiere/entity-hooks";
 import { stripSystemFields } from "@/lib/idempiere/field-utils";
 import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import { useUnsavedGuard } from "@/lib/idempiere/use-unsaved-guard";
@@ -47,40 +47,26 @@ function formatRef(val: unknown): string {
 
 function PartnerPageInner() {
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const qc = useQueryClient();
   const id = Number(params.id);
   const [viewMode, setViewMode] = React.useState(searchParams.get("mode") === "view");
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
-  const [initialData, setInitialData] = React.useState<string>("{}");
-  const [loading, setLoading] = React.useState(true);
-  const [saving, setSaving] = React.useState(false);
-
-  const isDirty = loading ? false : JSON.stringify(formData) !== initialData;
+  const [isDirty, setIsDirty] = React.useState(false);
   useUnsavedGuard(isDirty);
 
+  const { data: entity, isPending } = useEntityDetail("c_bpartner", id);
+  const updateMutation = useUpdateEntity("c_bpartner");
+
   React.useEffect(() => {
-    if (!id) return;
-    const token = getTokenFromStorage();
-    if (!token) {
-      setLoading(false);
-      return;
+    if (entity) {
+      setFormData(entity);
+      setIsDirty(false);
     }
-    getModel<EntityRow>("c_bpartner", id, token)
-      .then((rec) => {
-        setFormData(rec);
-        setInitialData(JSON.stringify(rec));
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        toast.error(`Failed to load: ${msg}`);
-      })
-      .finally(() => setLoading(false));
-  }, [id]);
+  }, [entity]);
 
   function handleFieldChange(columnName: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [columnName]: value }));
+    setIsDirty(true);
   }
 
   async function handleSave() {
@@ -90,28 +76,23 @@ function PartnerPageInner() {
       return;
     }
     const payload = stripSystemFields(formData);
-    setSaving(true);
     try {
-      await updateModel("c_bpartner", id, payload, token);
+      await updateMutation.mutateAsync({ id, data: payload });
       toast.success("Business partner updated");
-      setInitialData(JSON.stringify(formData));
+      setIsDirty(false);
       setViewMode(false);
-      // ponytail: invalidate list cache so Back shows fresh data
-      qc.invalidateQueries({ queryKey: ["entity", "c_bpartner"] });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       toast.error(msg.includes("detail") ? msg : `Failed to save: ${msg}`);
-    } finally {
-      setSaving(false);
     }
   }
 
-  if (loading) {
+  if (isPending) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" disabled>
-            <ArrowLeft className="size-4" />
+            <ChevronDown className="size-4" />
           </Button>
           <div className="h-7 w-48 animate-pulse rounded bg-muted" />
         </div>
@@ -138,7 +119,7 @@ function PartnerPageInner() {
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
               <Link href="/dashboard/business-partners">
-                <ArrowLeft className="size-4" />
+                <ChevronDown className="size-4" />
               </Link>
             </Button>
             <h1 className="font-semibold text-2xl">
@@ -148,7 +129,7 @@ function PartnerPageInner() {
           <div className="flex gap-2">
             {viewMode ? (
               <Button onClick={() => setViewMode(false)}>
-                <Pencil className="size-4" />
+                <ChevronDown className="size-4" />
                 Edit
               </Button>
             ) : (
@@ -156,9 +137,8 @@ function PartnerPageInner() {
                 <Button variant="outline" asChild>
                   <Link href="/dashboard/business-partners">Cancel</Link>
                 </Button>
-                <Button onClick={handleSave} disabled={saving}>
-                  <Save className="size-4" />
-                  {saving ? "Saving..." : "Save"}
+                <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? "Saving..." : "Save"}
                 </Button>
               </>
             )}
@@ -173,15 +153,19 @@ function PartnerPageInner() {
 
         {/* ponytail: audit info — collapsible, read-only */}
         {Boolean(formData.Created || formData.Updated) && (
-          <details className="text-muted-foreground text-xs">
-            <summary className="cursor-pointer select-none">Audit Info</summary>
-            <div className="mt-2 space-y-1 pl-4">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                Audit Info
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-1 pl-4 text-muted-foreground text-xs">
               {formData.Created ? <div>Created: {formatWIB(formData.Created)}</div> : null}
               {formData.CreatedBy ? <div>Created by: {formatRef(formData.CreatedBy)}</div> : null}
               {formData.Updated ? <div>Updated: {formatWIB(formData.Updated)}</div> : null}
               {formData.UpdatedBy ? <div>Updated by: {formatRef(formData.UpdatedBy)}</div> : null}
-            </div>
-          </details>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
     </ErrorBoundary>

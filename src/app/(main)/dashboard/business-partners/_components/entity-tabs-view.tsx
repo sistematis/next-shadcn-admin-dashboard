@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,7 +32,6 @@ import type { WindowField } from "@/lib/idempiere/types";
 import { ChildTabGrid } from "./child-tab-grid";
 
 const MAX_TAB_LEVEL = 2;
-const HEADER_TABLE = "c_bpartner"; // ponytail: BP window header table — extension tabs share it
 
 export type EntityRow = Record<string, unknown> & { id: number };
 
@@ -55,13 +55,20 @@ export function EntityTabsView({
   const fieldsByTab = useAllTabFields(windowSlug, tabs, MAX_TAB_LEVEL);
 
   if (tabsLoading) {
-    return <div className="flex h-32 items-center justify-center text-muted-foreground text-sm">Loading fields...</div>;
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-9 w-full" />
+        ))}
+      </div>
+    );
   }
 
   if (tabs.length === 0) {
     return <p className="text-muted-foreground text-sm">No fields available.</p>;
   }
 
+  const headerTableName = tabs.find((t) => t.TabLevel === 0)?.tableName;
   const visibleTabs = entityId ? tabs : tabs.filter((t) => t.TabLevel === 0);
   const defaultTab = visibleTabs[0]?.slug ?? windowSlug;
 
@@ -81,8 +88,10 @@ export function EntityTabsView({
           .filter((f) => f.isDisplayed !== false && isFormField(f.columnName))
           .sort((a, b) => (a.seqNo ?? 999) - (b.seqNo ?? 999));
         const isLevel2 = tab.TabLevel === 2;
-        const isChildTab = tab.TabLevel > 0 && tab.tableName !== HEADER_TABLE;
+        const isChildTab = tab.TabLevel > 0 && tab.tableName !== headerTableName;
         const parentCol = tab.parentColumnName ?? "C_BPartner_ID";
+        // ponytail: for level-2 tabs, find the level-1 tab that links header to this tab
+        const level1Tab = tabs.find((t) => t.TabLevel === 1 && t.tableName === parentCol);
         return (
           <TabsContent key={tab.slug} value={tab.slug} className="mt-4">
             {isChildTab && entityId && tab.tableName ? (
@@ -90,7 +99,8 @@ export function EntityTabsView({
                 <Level2TabGrid
                   tableName={tab.tableName}
                   parentColumnName={parentCol}
-                  bpId={entityId}
+                  headerId={entityId}
+                  parentTabTableName={level1Tab?.tableName}
                   fields={fieldsByTab[tab.slug] ?? []}
                 />
               ) : (
@@ -180,37 +190,43 @@ function FieldGroupRenderer({
   );
 }
 
-/** Level2TabGrid — level-2 tabs link via Contact (ad_user), not BP directly */
+/** Level2TabGrid — level-2 tabs link via intermediate parent table */
 function Level2TabGrid({
   tableName,
   parentColumnName,
-  bpId,
+  headerId,
+  parentTabTableName,
   fields,
 }: {
   tableName: string;
   parentColumnName: string;
-  bpId: number;
+  headerId: number;
+  parentTabTableName?: string;
   fields: WindowField[];
 }) {
-  const [contactId, setContactId] = React.useState<number | null>(null);
+  const [parentId, setParentId] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (!parentTabTableName) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
       try {
         const token = getTokenFromStorage();
         if (!token) return;
-        const resp = await getModels<{ id: number }>("ad_user", token, {
-          filter: `C_BPartner_ID eq ${bpId}`,
+        const resp = await getModels<{ id: number }>(parentTabTableName, token, {
+          filter: `C_BPartner_ID eq ${headerId}`,
           orderby: "id asc",
           top: 1,
         });
         if (!cancelled && resp.records.length > 0) {
-          setContactId(resp.records[0].id);
+          setParentId(resp.records[0].id);
         }
       } catch {
-        /* no contacts */
+        /* no parent records */
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -218,17 +234,20 @@ function Level2TabGrid({
     return () => {
       cancelled = true;
     };
-  }, [bpId]);
+  }, [headerId, parentTabTableName]);
 
   if (loading) return <p className="text-muted-foreground text-sm">Loading...</p>;
-  if (!contactId) {
+  if (!parentTabTableName) {
+    return <p className="text-muted-foreground text-sm italic">Parent tab not available (admin access required).</p>;
+  }
+  if (!parentId) {
     return (
-      <p className="text-muted-foreground text-sm italic">No contact found. Add a contact in the Contact tab first.</p>
+      <p className="text-muted-foreground text-sm italic">
+        No parent record found. Add a record in the {parentTabTableName} tab first.
+      </p>
     );
   }
-  return (
-    <ChildTabGrid tableName={tableName} parentColumnName={parentColumnName} parentId={contactId} fields={fields} />
-  );
+  return <ChildTabGrid tableName={tableName} parentColumnName={parentColumnName} parentId={parentId} fields={fields} />;
 }
 
 export function FieldInput({

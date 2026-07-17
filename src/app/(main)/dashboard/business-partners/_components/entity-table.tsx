@@ -3,9 +3,13 @@
 
 import type { MouseEvent } from "react";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
 import { flexRender, type Table as TableType } from "@tanstack/react-table";
 import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import {
   Pagination,
   PaginationContent,
@@ -33,14 +37,43 @@ function getPageNumbers(currentPage: number, pageCount: number) {
   return [currentPage - 1, currentPage, currentPage + 1];
 }
 
-export function EntityTable({ table }: { table: TableType<EntityRow> }) {
+export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; basePath: string }) {
+  const router = useRouter();
   const pageCount = Math.max(table.getPageCount(), 1);
   const currentPage = Math.min(table.getState().pagination.pageIndex + 1, pageCount);
   const pageNumbers = getPageNumbers(currentPage, pageCount);
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div>
+      {/* Responsive card view for mobile */}
+      <div className="space-y-3 px-4 md:hidden">
+        {table.getRowModel().rows.length
+          ? table.getRowModel().rows.map((row) => (
+              <Link
+                key={row.id}
+                href={`${basePath}/${row.original.id}?mode=view`}
+                className="block cursor-pointer rounded-lg border p-4 hover:bg-accent/50"
+              >
+                <div className="font-medium text-foreground">{String(row.original.Name ?? "(unnamed)")}</div>
+                <div className="text-muted-foreground text-sm">{String(row.original.Value ?? "")}</div>
+                <div className="mt-2">
+                  {row.original.IsActive === false ? (
+                    <Badge variant="outline" className="gap-1 text-red-600">
+                      Inactive
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="gap-1 text-emerald-600">
+                      Active
+                    </Badge>
+                  )}
+                </div>
+              </Link>
+            ))
+          : null}
+      </div>
+
+      {/* Table view for desktop */}
+      <div className="hidden md:block">
         <Table className="table-sticky-first **:data-[slot='table-cell']:px-4 **:data-[slot='table-head']:px-4">
           <TableHeader className="[&_tr]:border-t">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -75,11 +108,21 @@ export function EntityTable({ table }: { table: TableType<EntityRow> }) {
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="border-border/60 hover:bg-white/2.5"
+                  className="border-border/60 hover:bg-white/2.5 cursor-pointer"
                   data-state={row.getIsSelected() && "selected"}
+                  onClick={() => router.push(`${basePath}/${row.id}?mode=view`)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="px-3 py-4 align-middle">
+                    <TableCell
+                      key={cell.id}
+                      className="px-3 py-4 align-middle"
+                      onClick={(e) => {
+                        // ponytail: stop propagation for checkbox/action cells
+                        if (cell.column.id === "select" || cell.column.id === "actions") {
+                          e.stopPropagation();
+                        }
+                      }}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

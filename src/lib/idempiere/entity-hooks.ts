@@ -42,6 +42,7 @@ const qk = {
   tabs: (windowSlug: string) => ["window", windowSlug, "tabs"] as const,
   fields: (tabId: number) => ["window", "fields", tabId] as const,
   fkOptions: (modelName: string) => ["fk-options", modelName] as const,
+  listOptions: (refListId: number) => ["list-options", refListId] as const,
 };
 
 // ── Tabs + Fields (cached metadata) ──────────────────────────
@@ -136,8 +137,8 @@ export function useEntityList(modelName: string, params: EntityQueryParams) {
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
 
-      // ponytail: build server-side filter — search + IsActive + extra filters
-      const filters: string[] = ["IsActive eq true or IsActive eq false"];
+      // ponytail: build server-side filter — search + extra filters
+      const filters: string[] = [];
       if (params.search) {
         // ponytail: substringof is the OData function for LIKE
         const s = params.search.replace(/'/g, "''");
@@ -228,14 +229,20 @@ export function useDeleteEntity(modelName: string) {
 export function useBulkDelete(modelName: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (ids: number[]) => {
+    mutationFn: async (ids: number[]): Promise<PromiseSettledResult<void>[]> => {
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
-      await Promise.all(ids.map((id) => deleteModel(modelName, id, token)));
+      return Promise.allSettled(ids.map((id) => deleteModel(modelName, id, token)));
     },
-    onSuccess: (_data, ids) => {
+    onSuccess: (_data, ids, context) => {
+      const results = context as PromiseSettledResult<void>[];
+      const failed = ids.filter((_, i) => results[i]?.status === "rejected");
+      if (failed.length === 0) {
+        toast.success(`Deleted ${ids.length} record(s)`);
+      } else {
+        toast.error(`Deleted ${ids.length - failed.length}, failed ${failed.length}`);
+      }
       qc.invalidateQueries({ queryKey: ["entity", modelName] });
-      toast.success(`Deleted ${ids.length} record(s)`);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Bulk delete failed"),
   });
@@ -258,6 +265,25 @@ export function useFKOptions(modelName: string | undefined) {
       return resp.records.map((r) => ({ id: r.id, name: r.Name ?? r.name ?? `#${r.id}` }));
     },
     enabled: !!modelName,
+    staleTime: 10 * 60 * 1000, // ponytail: 10min — reference data changes rarely
+  });
+}
+
+/** Fetch AD_Ref_List options for list-type fields (reference ID 17) */
+export function useListOptions(refListId: number) {
+  return useQuery({
+    queryKey: qk.listOptions(refListId),
+    queryFn: async () => {
+      const token = getTokenFromStorage();
+      if (!token) throw new Error("Not authenticated");
+      const resp = await getModels<{ id: number; Name?: string; Value?: string }>("ad_ref_list", token, {
+        filter: `AD_Reference_ID eq ${refListId}`,
+        orderby: "Name asc",
+        top: 200,
+      });
+      return resp.records.map((r) => ({ id: String(r.id), name: r.Name ?? r.Value ?? `#${r.id}` }));
+    },
+    enabled: refListId > 0,
     staleTime: 10 * 60 * 1000, // ponytail: 10min — reference data changes rarely
   });
 }

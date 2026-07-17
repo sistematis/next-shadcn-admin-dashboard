@@ -131,3 +131,37 @@ export function stripSystemFields(data: Record<string, unknown>): Record<string,
   }
   return out;
 }
+
+// ── Field value utilities ─────────────────────────────────────
+
+/**
+ * Validate mandatory fields — returns error message or null if all valid.
+ * Handles FK objects (id 0/null = empty) and boolean fields (false is valid).
+ */
+export function validateMandatory(fields: WindowField[], data: Record<string, unknown>): string | null {
+  for (const f of fields) {
+    if (f.isMandatory) {
+      const val = data[f.columnName];
+      // ponytail: FK objects with id=0 or id=null are treated as empty
+      if (val !== undefined && val !== null && typeof val === "object" && "id" in val) {
+        const fkId = (val as { id: unknown }).id;
+        if (fkId === 0 || fkId === null || fkId === "") return `${f.Name} is required`;
+        continue;
+      }
+      // ponytail: boolean false is valid (default), only missing is error
+      if (typeof val === "boolean") continue;
+      if (val === undefined || val === null || val === "") return `${f.Name} is required`;
+    }
+  }
+  return null;
+}
+
+/** Format any field value for display — handles nulls, FK objects, booleans */
+export function formatFieldValue(val: unknown): string {
+  if (val === undefined || val === null) return "-";
+  if (typeof val === "object" && val !== null && "identifier" in val) {
+    return String((val as { identifier?: string }).identifier ?? "-");
+  }
+  if (typeof val === "boolean") return val ? "Yes" : "No";
+  return String(val);
+}

@@ -19,7 +19,7 @@ import { isBooleanField, isFKField, isNumberField, isPickableField } from "@/lib
 import type { WindowField } from "@/lib/idempiere/types";
 
 // Columns excluded from the column picker (internal/helper columns)
-const TABLE_HIDDEN = new Set(["search", "select", "actions"]);
+export const TABLE_HIDDEN = new Set(["search", "select", "actions"]);
 
 export interface RowActions {
   onView: (row: EntityRow) => void;
@@ -64,14 +64,6 @@ export function buildColumns(fields: WindowField[], actions?: RowActions): Colum
     const col = buildColumnDef(f);
     if (col) cols.push(col);
   }
-
-  // Search helper column (hidden, kept for backward compat but server-side search is primary)
-  cols.push({
-    id: "search",
-    accessorFn: (row) => `${row.Name ?? ""} ${row.Value ?? ""}`,
-    enableHiding: true,
-    enableSorting: false,
-  });
 
   cols.push({
     id: "actions",
