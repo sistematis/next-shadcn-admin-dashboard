@@ -37,3 +37,7 @@ next-env.d.ts
 .env*.local
 .env.production
 .env
+
+# local dev tooling artifacts
+.dev.log
+.playwright-mcp/
