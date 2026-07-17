@@ -80,20 +80,21 @@ export function useWindowTabsCached(windowSlug: string) {
   });
 }
 
-export function useTabFields(tabId: number, windowSlug: string) {
+export function useTabFields(tabId: number, windowSlug: string, tabSlug?: string) {
   return useQuery({
     queryKey: qk.fields(tabId),
     queryFn: async (): Promise<WindowField[]> => {
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
-      // ponytail: prefer layout API (full metadata), fall back to basic Windows API
+      // ponytail: prefer layout API (full metadata), fall back to role-aware Windows API
       try {
         const fields = await getWindowFieldLayout(tabId, token);
         if (fields.length > 0) return fields;
       } catch {
         /* fall through to Windows API */
       }
-      return getWindowFields(windowSlug, "", token);
+      // ponytail: pass the real tab slug — "" hit the wrong tab (header fields for every child tab)
+      return tabSlug ? getWindowFields(windowSlug, tabSlug, token) : [];
     },
     enabled: tabId > 0,
   });

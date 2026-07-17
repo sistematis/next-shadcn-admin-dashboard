@@ -1,7 +1,9 @@
 "use client";
 "use no memo";
 
-import type { ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
+
+import { type ColumnDef, flexRender } from "@tanstack/react-table";
 import { Check, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +16,10 @@ import type { WindowField } from "@/lib/idempiere/types";
 export const TABLE_HIDDEN = new Set(["search", "select"]);
 
 /** Generate column defs from window field metadata + select chrome. Row actions live on the detail page. */
-export function buildColumns(fields: WindowField[]): ColumnDef<EntityRow>[] {
+export function buildColumns(
+  fields: WindowField[],
+  options?: { rowHref?: (row: EntityRow) => string },
+): ColumnDef<EntityRow>[] {
   const gridFields = fields.filter((f) => f.isDisplayedGrid !== false);
   gridFields.sort((a, b) => (a.seqNoGrid ?? 999) - (b.seqNoGrid ?? 999));
 
@@ -44,14 +49,38 @@ export function buildColumns(fields: WindowField[]): ColumnDef<EntityRow>[] {
     },
   ];
 
+  // ponytail: first pickable column becomes the row's nav link (stretched-link rendered in EntityTable).
+  const rowHref = options?.rowHref;
+  let primaryAttached = false;
   for (const f of gridFields) {
     if (!isPickableField(f.columnName)) continue;
     if (TABLE_HIDDEN.has(f.columnName)) continue;
     const col = buildColumnDef(f);
-    if (col) cols.push(col);
+    if (!col) continue;
+    const linkIt = !primaryAttached && !!rowHref;
+    cols.push(linkIt ? withRowLink(col, rowHref!) : col);
+    primaryAttached = true;
   }
 
   return cols;
+}
+
+/**
+ * ponytail: stretched-link — the primary cell renders as a real <a> whose ::after overlays the
+ * whole row, so the row is clickable AND keyboard / middle-click accessible (fixes the tr->onClick a11y gap).
+ * Interactive cells (the select checkbox) sit above the overlay via `relative z-10` in EntityTable.
+ */
+function withRowLink(col: ColumnDef<EntityRow>, rowHref: (row: EntityRow) => string): ColumnDef<EntityRow> {
+  const cell = col.cell;
+  if (!cell) return col;
+  return {
+    ...col,
+    cell: (context) => (
+      <Link href={rowHref(context.row.original)} className="after:absolute after:content-[''] after:inset-0">
+        {flexRender(cell, context)}
+      </Link>
+    ),
+  };
 }
 
 function buildColumnDef(f: WindowField): ColumnDef<EntityRow> | null {

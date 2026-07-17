@@ -1,4 +1,4 @@
-import { EntityDrillPage } from "../../_components/entity-drill-page";
+import { EntityDrillPage } from "@/components/data/entity-drill-page";
 
 export default async function ChildDrillPage({ params }: { params: Promise<{ id: string; drill: string[] }> }) {
   const { id, drill } = await params;

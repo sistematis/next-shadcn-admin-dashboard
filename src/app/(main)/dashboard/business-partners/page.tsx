@@ -1,17 +1,20 @@
-import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { Suspense } from "react";
 
-import { EntityList } from "./_components/entity-list";
+import { EntityList } from "@/components/data/entity-list";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 export default function Page() {
   return (
     <ErrorBoundary>
-      <EntityList
-        windowSlug="business-partner"
-        modelName="c_bpartner"
-        title="Business Partners"
-        description="Manage customers, vendors, and business partner relationships."
-        basePath="/dashboard/business-partners"
-      />
+      <Suspense>
+        <EntityList
+          windowSlug="business-partner"
+          modelName="c_bpartner"
+          title="Business Partners"
+          description="Manage customers, vendors, and business partner relationships."
+          basePath="/dashboard/business-partners"
+        />
+      </Suspense>
     </ErrorBoundary>
   );
 }

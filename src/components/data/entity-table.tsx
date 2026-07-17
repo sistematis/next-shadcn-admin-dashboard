@@ -5,7 +5,6 @@ import type { MouseEvent } from "react";
 import * as React from "react";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { flexRender, type Table as TableType } from "@tanstack/react-table";
 import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
@@ -23,6 +22,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
+import { cn } from "@/lib/utils";
 
 function preventPaginationNavigation(event: MouseEvent<HTMLAnchorElement>) {
   event.preventDefault();
@@ -46,7 +46,6 @@ export function EntityTable({
   basePath: string;
   resolveRowId?: (row: EntityRow) => string | number | undefined;
 }) {
-  const router = useRouter();
   // ponytail: id for navigation — default to entity id; child grids pass a resolver (some tables omit `id`)
   const idOf = resolveRowId ?? ((r: EntityRow) => r.id ?? r.uid);
   const pageCount = Math.max(table.getPageCount(), 1);
@@ -126,23 +125,13 @@ export function EntityTable({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="border-border/60 hover:bg-white/2.5 cursor-pointer"
+                  className="relative cursor-pointer border-border/60 hover:bg-accent"
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => {
-                    const id = idOf(row.original);
-                    if (id !== "" && id != null) router.push(`${basePath}/${id}`);
-                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      className="px-3 py-4 align-middle"
-                      onClick={(e) => {
-                        // ponytail: stop propagation for checkbox cells
-                        if (cell.column.id === "select") {
-                          e.stopPropagation();
-                        }
-                      }}
+                      className={cn("px-3 py-4 align-middle", cell.column.id === "select" && "relative z-10")}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>

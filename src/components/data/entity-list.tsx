@@ -89,7 +89,7 @@ export function EntityList({
 
   // ── Data queries ──────────────────────────────────────────
   const { tabs, headerTab } = useWindowTabsCached(windowSlug).data ?? {};
-  const { data: fields = [] } = useTabFields(headerTab?.id ?? 0, windowSlug);
+  const { data: fields = [] } = useTabFields(headerTab?.id ?? 0, windowSlug, headerTab?.slug);
   const { data, isPending, isFetching, isError, refetch } = useEntityList(modelName, {
     page: pagination.pageIndex,
     pageSize: pagination.pageSize,
@@ -176,7 +176,10 @@ export function EntityList({
   // ── Mutations ─────────────────────────────────────────────
   const deleteMut = useBulkDelete(modelName);
 
-  const columns = React.useMemo<ReturnType<typeof buildColumns>>(() => buildColumns(fields), [fields]);
+  const columns = React.useMemo<ReturnType<typeof buildColumns>>(
+    () => buildColumns(fields, { rowHref: (r) => `${basePath}/${r.id ?? r.uid}` }),
+    [basePath, fields],
+  );
 
   // ── Table ─────────────────────────────────────────────────
   const table = useReactTable({

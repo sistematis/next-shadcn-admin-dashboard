@@ -52,7 +52,10 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
   const [rowSelection, setRowSelection] = React.useState({});
   const [showBulkDelete, setShowBulkDelete] = React.useState(false);
 
-  const columns = React.useMemo(() => buildColumns(fields), [fields]);
+  const columns = React.useMemo(
+    () => buildColumns(fields, { rowHref: (r) => `${childBase}/${rowIdOf(r) ?? ""}` }),
+    [fields, childBase],
+  );
 
   const table = useReactTable({
     data: rows,

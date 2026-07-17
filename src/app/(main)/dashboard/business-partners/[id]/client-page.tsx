@@ -1,6 +1,6 @@
 "use client";
 
-import { EntityFormPage } from "../_components/entity-form-page";
+import { EntityFormPage } from "@/components/data/entity-form-page";
 
 export function ClientEditPartnerPage(props: {
   windowSlug: string;

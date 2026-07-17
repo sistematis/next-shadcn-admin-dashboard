@@ -127,7 +127,7 @@ function EntityFormPageInner({
   const { data: tabsData } = useWindowTabsCached(windowSlug);
   const tabs = tabsData?.tabs ?? [];
   const currentTab = (tabSlug ? tabs.find((t) => t.slug === tabSlug) : undefined) ?? tabsData?.headerTab ?? tabs[0];
-  const { data: currentTabFields } = useTabFields(currentTab?.id ?? 0, windowSlug);
+  const { data: currentTabFields } = useTabFields(currentTab?.id ?? 0, windowSlug, currentTab?.slug);
 
   const activeTabResolved = activeTab || currentTab?.slug || windowSlug;
   const locked = isEditMode && isRecordLocked(formData);
