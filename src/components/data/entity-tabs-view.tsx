@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { evaluateDisplayLogic } from "@/lib/idempiere/display-logic";
-import { useAllTabFields, useFKOptions, useListOptions, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
+import { useFKOptions, useListOptions, useTabFieldsForTabs, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
 import {
   deriveTable,
   isBooleanField,
@@ -29,8 +29,6 @@ import type { WindowField } from "@/lib/idempiere/types";
 
 // biome-ignore lint/suspicious/noImportCycles: parent-child cycle is harmless for tree-shaking
 import { ChildTabGrid } from "./child-tab-grid";
-
-const MAX_TAB_LEVEL = 2;
 
 export type EntityRow = Record<string, unknown> & { id?: number; uid?: string };
 
@@ -57,7 +55,24 @@ export function EntityTabsView({
 }: EntityTabsViewProps) {
   const { data: tabData, isPending: tabsLoading } = useWindowTabsCached(windowSlug);
   const tabs = tabData?.tabs ?? [];
-  const fieldsByTab = useAllTabFields(windowSlug, tabs, MAX_TAB_LEVEL);
+
+  // ponytail: resolve visible tabs up front (needs no fields) so we fetch fields only for the
+  // current tab + its direct children — not every level<=2 tab in the window (cuts the form-open fan-out)
+  const currentTab =
+    (currentTabSlug ? tabs.find((t) => t.slug === currentTabSlug) : undefined) ??
+    tabs.find((t) => t.TabLevel === 0) ??
+    tabs[0];
+  const directChildren = currentTab
+    ? tabs.filter(
+        (t) =>
+          t.TabLevel === currentTab.TabLevel + 1 &&
+          !!t.tableName &&
+          !!currentTab.tableName &&
+          deriveTable(t.parentColumnName) === currentTab.tableName,
+      )
+    : [];
+  const visibleTabs = entityId && currentTab ? [currentTab, ...directChildren] : currentTab ? [currentTab] : [];
+  const fieldsByTab = useTabFieldsForTabs(windowSlug, visibleTabs);
 
   if (tabsLoading) {
     return (
@@ -73,20 +88,7 @@ export function EntityTabsView({
     return <p className="text-muted-foreground text-sm">No fields available.</p>;
   }
 
-  const currentTab =
-    (currentTabSlug ? tabs.find((t) => t.slug === currentTabSlug) : undefined) ??
-    tabs.find((t) => t.TabLevel === 0) ??
-    tabs[0];
   if (!currentTab) return null;
-  // ponytail: direct children = one level deeper whose parent column resolves to this tab's table
-  const directChildren = tabs.filter(
-    (t) =>
-      t.TabLevel === currentTab.TabLevel + 1 &&
-      !!t.tableName &&
-      !!currentTab.tableName &&
-      deriveTable(t.parentColumnName) === currentTab.tableName,
-  );
-  const visibleTabs = entityId ? [currentTab, ...directChildren] : [currentTab];
   const defaultTab = currentTab.slug;
 
   return (

@@ -100,15 +100,12 @@ export function useTabFields(tabId: number, windowSlug: string, tabSlug?: string
   });
 }
 
-/** Fetch fields for all tabs in parallel, return map keyed by tab slug */
-export function useAllTabFields(windowSlug: string, tabs: WindowTab[], maxTabLevel: number) {
-  const useful = tabs
-    .filter((t) => t.TabLevel === 0 || t.tableName)
-    .filter((t) => t.TabLevel <= maxTabLevel)
-    .sort((a, b) => a.SeqNo - b.SeqNo);
-
+/** Fetch fields for exactly the given tabs (parallel), keyed by tab slug.
+ *  ponytail: the caller passes only the tabs it renders, so opening a form fans out to the
+ *  current tab + its direct children rather than every level<=2 tab in the window. */
+export function useTabFieldsForTabs(windowSlug: string, tabs: WindowTab[]) {
   const results = useQueries({
-    queries: useful.map((t) => ({
+    queries: tabs.map((t) => ({
       queryKey: qk.fields(t.id),
       queryFn: async (): Promise<WindowField[]> => {
         const token = getTokenFromStorage();
@@ -125,9 +122,9 @@ export function useAllTabFields(windowSlug: string, tabs: WindowTab[], maxTabLev
   });
 
   const map: Record<string, WindowField[]> = {};
-  for (let i = 0; i < useful.length; i++) {
+  for (let i = 0; i < tabs.length; i++) {
     const data = results[i]?.data;
-    if (data) map[useful[i].slug] = data;
+    if (data) map[tabs[i].slug] = data;
   }
   return map;
 }
