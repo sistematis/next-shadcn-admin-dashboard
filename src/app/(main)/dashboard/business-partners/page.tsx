@@ -11,7 +11,6 @@ export default function Page() {
         title="Business Partners"
         description="Manage customers, vendors, and business partner relationships."
         basePath="/dashboard/business-partners"
-        defaultGridColumns={["Name", "Value", "IsActive", "C_BP_Group_ID", "TotalOpenBalance"]}
       />
     </ErrorBoundary>
   );

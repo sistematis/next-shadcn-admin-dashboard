@@ -47,8 +47,6 @@ export interface EntityListProps {
   basePath: string; // e.g. "/dashboard/business-partners"
   // ponytail: optional search fields for server-side search (default: Name + Value)
   searchFields?: string[];
-  // ponytail: default visible columns (excluding select/actions)
-  defaultGridColumns?: string[];
 }
 
 export function EntityList({
@@ -58,7 +56,6 @@ export function EntityList({
   description,
   basePath,
   searchFields = ["Name", "Value"],
-  defaultGridColumns,
 }: EntityListProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -99,7 +96,11 @@ export function EntityList({
     search: debouncedSearch || undefined,
     orderBy: sorting[0] ? `${sorting[0].id} ${sorting[0].desc ? "desc" : "asc"}` : undefined,
     filter:
-      statusFilter === "Active" ? "IsActive eq true" : statusFilter === "Inactive" ? "IsActive eq false" : undefined,
+      statusFilter === "Active"
+        ? "IsActive eq true"
+        : statusFilter === "Inactive"
+          ? "IsActive eq false"
+          : "IsActive eq true or IsActive eq false",
   });
 
   const records = data?.records ?? [];
@@ -107,23 +108,22 @@ export function EntityList({
   const pageCount = data?.pageCount ?? 1;
 
   // ── Column visibility from metadata ───────────────────────
+  // ponytail: trust IsDisplayedGrid from AD_Field — backend config is source of truth.
+  // Cap initial visible to first 7 by SeqNoGrid for usable table; rest toggleable via column picker.
   React.useEffect(() => {
     if (fields.length === 0) return;
     const vis: VisibilityState = {};
-    for (const f of fields) {
-      if (f.columnName && f.isDisplayedGrid === false) vis[f.columnName] = false;
-    }
-    // ponytail: apply defaultGridColumns if provided
-    if (defaultGridColumns && defaultGridColumns.length > 0) {
-      const allColumns = fields.filter((f) => f.columnName && f.isDisplayedGrid !== false).map((f) => f.columnName);
-      for (const col of allColumns) {
-        if (col && !TABLE_HIDDEN.has(col) && !defaultGridColumns.includes(col)) {
-          vis[col] = false;
-        }
+    const gridFields = fields
+      .filter((f) => f.isDisplayedGrid !== false)
+      .sort((a, b) => (a.seqNoGrid ?? 999) - (b.seqNoGrid ?? 999));
+    // Hide fields beyond first 7
+    for (let i = 0; i < gridFields.length; i++) {
+      if (i >= 7 && gridFields[i].columnName) {
+        vis[gridFields[i].columnName] = false;
       }
     }
     setColumnVisibility(vis);
-  }, [fields, defaultGridColumns]);
+  }, [fields]);
 
   // ── URL sync ─────────────────────────────────────────────
   React.useEffect(() => {
