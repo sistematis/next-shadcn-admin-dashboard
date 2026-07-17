@@ -192,7 +192,7 @@ export function EntityList({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: handleColumnVisibilityChange,
-    getRowId: (row) => row.id.toString(),
+    getRowId: (row) => String(row.id ?? row.uid),
     autoResetPageIndex: false,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -241,7 +241,7 @@ export function EntityList({
     const selectedRows = table.getFilteredSelectedRowModel().rows;
     if (!selectedRows.length) return;
     deleteMut.mutate(
-      selectedRows.map((r) => r.original.id),
+      selectedRows.map((r) => r.original.id ?? r.original.uid).filter((x): x is number | string => x != null),
       {
         onSuccess: () => {
           setRowSelection({});

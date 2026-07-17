@@ -5,6 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useQueries } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { getModel } from "@/lib/idempiere/client";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 import {
   useCreateEntity,
@@ -27,7 +29,7 @@ import {
   useUpdateEntity,
   useWindowTabsCached,
 } from "@/lib/idempiere/entity-hooks";
-import { stripSystemFields, validateMandatory } from "@/lib/idempiere/field-utils";
+import { normalizeRefs, stripSystemFields, validateMandatory } from "@/lib/idempiere/field-utils";
 import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import { useUnsavedGuard } from "@/lib/idempiere/use-unsaved-guard";
 
@@ -38,7 +40,9 @@ interface EntityFormPageProps {
   modelName: string;
   basePath: string;
   title: string;
-  entityId?: number;
+  entityId?: number | string;
+  tabSlug?: string; // which tab this form renders (default: header); child tabs inject a parent FK on create
+  drillPath?: { tabSlug: string; id: number }[]; // ancestor chain (excluding current) — breadcrumb links + FK injection
 }
 
 // ponytail: iDempiere returns UTC timestamps — display as WIB (UTC+7)
@@ -68,10 +72,30 @@ function formatRef(val: unknown): string {
 
 // ponytail: documents lock when completed (Processed / DocStatus="CO"); master data stays editable
 function isRecordLocked(data: Record<string, unknown>): boolean {
-  return data?.Processed === true || data?.DocStatus === "CO";
+  return data.Processed === true || data.DocStatus === "CO";
 }
 
-function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId }: EntityFormPageProps) {
+// ponytail: build breadcrumb links + after-create target from the drill ancestor chain.
+// First ancestor is the header (route = basePath/{id}); the rest append /{tabSlug}/{id}.
+function buildAncestorRoutes(basePath: string, drillPath: { tabSlug: string; id: number }[]): string[] {
+  const routes: string[] = [];
+  let route = basePath;
+  drillPath.forEach((seg, i) => {
+    route = i === 0 ? `${basePath}/${seg.id}` : `${route}/${seg.tabSlug}/${seg.id}`;
+    routes.push(route);
+  });
+  return routes;
+}
+
+function EntityFormPageInner({
+  windowSlug,
+  modelName,
+  basePath,
+  title,
+  entityId,
+  tabSlug,
+  drillPath,
+}: EntityFormPageProps) {
   const router = useRouter();
   const isEditMode = entityId !== undefined;
   const [activeTab, setActiveTab] = React.useState("");
@@ -84,14 +108,35 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
   const updateMutation = useUpdateEntity(modelName);
 
   const { data: tabsData } = useWindowTabsCached(windowSlug);
-  const headerTabId = tabsData?.headerTab?.id;
-  const { data: headerFields } = useTabFields(headerTabId ?? 0, windowSlug);
-
   const tabs = tabsData?.tabs ?? [];
-  const visibleTabs = isEditMode ? tabs : tabs.filter((t) => t.TabLevel === 0);
-  const activeTabResolved = activeTab || visibleTabs[0]?.slug || windowSlug;
-  const activeTabMeta = tabs.find((t) => t.slug === activeTabResolved);
+  const currentTab = (tabSlug ? tabs.find((t) => t.slug === tabSlug) : undefined) ?? tabsData?.headerTab ?? tabs[0];
+  const { data: currentTabFields } = useTabFields(currentTab?.id ?? 0, windowSlug);
+
+  const activeTabResolved = activeTab || currentTab?.slug || windowSlug;
   const locked = isEditMode && isRecordLocked(formData);
+
+  // ponytail: ancestor names for the breadcrumb (query keys match useEntityDetail → shared cache)
+  const ancestorRoutes = buildAncestorRoutes(basePath, drillPath ?? []);
+  const ancestorQueries = useQueries({
+    queries: (drillPath ?? []).map((seg) => {
+      const tab = tabs.find((t) => t.slug === seg.tabSlug);
+      return {
+        queryKey: ["entity", tab?.tableName ?? "", "detail", seg.id],
+        queryFn: async () => {
+          const token = getTokenFromStorage();
+          if (!token || !tab?.tableName) return null;
+          return getModel<EntityRow>(tab.tableName, seg.id, token);
+        },
+        enabled: !!tab?.tableName,
+        staleTime: 60_000,
+      };
+    }),
+  });
+  const ancestorNames = (drillPath ?? []).map((seg, i) => {
+    const rec = ancestorQueries[i]?.data as EntityRow | null | undefined;
+    return rec?.Name ? String(rec.Name) : `#${seg.id}`;
+  });
+  const parentRoute = ancestorRoutes.length > 0 ? ancestorRoutes[ancestorRoutes.length - 1] : basePath;
 
   React.useEffect(() => {
     if (entity) {
@@ -106,8 +151,8 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
   }
 
   async function handleSave() {
-    if (headerFields) {
-      const validationError = validateMandatory(headerFields, formData);
+    if (currentTabFields) {
+      const validationError = validateMandatory(currentTabFields, formData);
       if (validationError) {
         toast.error(validationError);
         return;
@@ -120,7 +165,11 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
       return;
     }
 
-    const payload = stripSystemFields(formData);
+    const payload = normalizeRefs(stripSystemFields(formData));
+    // ponytail: child create — re-inject parent FK (stripped if a system column like C_BPartner_ID)
+    if (!isEditMode && drillPath && drillPath.length > 0 && currentTab?.parentColumnName) {
+      payload[currentTab.parentColumnName] = { id: drillPath[drillPath.length - 1].id };
+    }
     try {
       if (isEditMode) {
         await updateMutation.mutateAsync({ id: entityId!, data: payload });
@@ -128,7 +177,7 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
       } else {
         await createMutation.mutateAsync(payload);
         setIsDirty(false);
-        router.push(basePath);
+        router.push(parentRoute);
       }
     } catch {
       // ponytail: hook already toasts on error — swallow here
@@ -168,7 +217,7 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
-              <Link href={basePath}>
+              <Link href={parentRoute}>
                 <ArrowLeft className="size-4" />
               </Link>
             </Button>
@@ -179,24 +228,34 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
                     <Link href={basePath}>{title}s</Link>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
+                {(drillPath ?? []).map((seg, i) => (
+                  <React.Fragment key={`${seg.tabSlug}-${seg.id}`}>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbLink asChild>
+                        <Link href={ancestorRoutes[i]}>{ancestorNames[i]}</Link>
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                  </React.Fragment>
+                ))}
+                {currentTab && currentTab.TabLevel > 0 && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>{currentTab.Name}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbPage>{isEditMode ? entityName || `#${entityId}` : "Add"}</BreadcrumbPage>
                 </BreadcrumbItem>
-                {isEditMode && activeTabMeta && activeTabMeta.TabLevel > 0 && (
-                  <>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage>{activeTabMeta.Name}</BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </>
-                )}
               </BreadcrumbList>
             </Breadcrumb>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" asChild>
-              <Link href={basePath}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
+              <Link href={parentRoute}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
             </Button>
             {!locked && (
               <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending || !isDirty}>
@@ -210,6 +269,7 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
           entityId={isEditMode ? entityId : null}
           activeTab={activeTabResolved}
           onTabChange={setActiveTab}
+          currentTabSlug={currentTab?.slug}
           data={!isEditMode && Object.keys(formData).length === 0 ? null : (formData as EntityRow)}
           onDataChange={handleFieldChange}
           readOnly={locked}

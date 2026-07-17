@@ -2,110 +2,88 @@
 
 import * as React from "react";
 
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import {
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+  type VisibilityState,
+} from "@tanstack/react-table";
+import { Columns3, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useChildRecords, useCreateEntity, useDeleteEntity, useUpdateEntity } from "@/lib/idempiere/entity-hooks";
-import { isSystemField, stripSystemFields } from "@/lib/idempiere/field-utils";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { type EntityRow, useBulkDelete, useChildRecords } from "@/lib/idempiere/entity-hooks";
 import type { WindowField } from "@/lib/idempiere/types";
 
-// biome-ignore lint/suspicious/noImportCycles: parent-child cycle is harmless for tree-shaking
-import { FieldInput } from "./entity-tabs-view";
+import { buildColumns, TABLE_HIDDEN } from "./entity-columns";
+import { EntityTable } from "./entity-table";
 
-// ponytail: child tab CRUD grid — queries child model filtered by parent FK, renders inline table + add/edit dialog
-type ChildRow = Record<string, unknown> & { id: number };
-
+// ponytail: child tab grid — reuses the header table (buildColumns + EntityTable) for full UI parity:
+// sorting, pagination, column picker, bulk delete. Rows navigate to the child form page.
 interface ChildTabGridProps {
   tableName: string;
   parentColumnName: string;
-  parentId: number;
+  parentId: number | string;
+  tabSlug: string;
   fields: WindowField[];
 }
 
-export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: ChildTabGridProps) {
-  // Data query
+export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, fields }: ChildTabGridProps) {
+  const pathname = usePathname();
+  // ponytail: child route = current page + tabSlug; rows append /{id}, Add appends /new
+  const childBase = `${pathname}/${tabSlug}`;
   const { data: rows = [], isPending: loading } = useChildRecords(tableName, parentColumnName, parentId);
+  const deleteMut = useBulkDelete(tableName);
 
-  // Mutations
-  const createMut = useCreateEntity(tableName);
-  const updateMut = useUpdateEntity(tableName);
-  const deleteMut = useDeleteEntity(tableName);
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 });
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [showBulkDelete, setShowBulkDelete] = React.useState(false);
 
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editing, setEditing] = React.useState<ChildRow | null>(null);
-  const [formData, setFormData] = React.useState<Record<string, unknown>>({});
-  const [saving, setSaving] = React.useState(false);
-  const [deleteTarget, setDeleteTarget] = React.useState<ChildRow | null>(null);
+  const columns = React.useMemo(() => buildColumns(fields), [fields]);
 
-  const formFields = React.useMemo(
-    () =>
-      fields
-        .filter((f) => f.isDisplayed !== false && !isSystemField(f.columnName))
-        .sort((a, b) => (a.seqNo ?? 999) - (b.seqNo ?? 999)),
-    [fields],
-  );
+  const table = useReactTable({
+    data: rows,
+    columns,
+    state: { sorting, pagination, columnVisibility, rowSelection },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
+    autoResetPageIndex: false,
+    enableRowSelection: true,
+    onRowSelectionChange: setRowSelection,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
-  // ponytail: grid columns — first 4 pickable fields, same logic as header table
-  const gridFields = React.useMemo(
-    () => fields.filter((f) => f.isDisplayedGrid !== false && !isSystemField(f.columnName)).slice(0, 5),
-    [fields],
-  );
+  const selectedCount = table.getFilteredSelectedRowModel().rows.length;
 
-  function handleAdd() {
-    setEditing(null);
-    setFormData({ [parentColumnName]: { id: parentId } });
-    setDialogOpen(true);
-  }
-
-  function handleEdit(row: ChildRow) {
-    setEditing(row);
-    setFormData({ ...row });
-    setDialogOpen(true);
-  }
-
-  function handleDelete(row: ChildRow) {
-    setDeleteTarget(row);
-  }
-
-  function confirmDelete() {
-    if (!deleteTarget) return;
-    deleteMut.mutate(deleteTarget.id);
-    setDeleteTarget(null);
-  }
-
-  function handleSave() {
-    // ponytail: mandatory validation — server enforces too, but better UX to catch early
-    for (const f of formFields) {
-      if (f.isMandatory) {
-        const val = formData[f.columnName];
-        if (val === undefined || val === null || val === "") {
-          toast.error(`${f.Name} is required`);
-          return;
-        }
-      }
+  function confirmBulkDelete() {
+    const selected = table.getFilteredSelectedRowModel().rows;
+    const ids = selected.map((r) => rowIdOf(r.original)).filter((x): x is number => typeof x === "number");
+    if (!ids.length) {
+      setShowBulkDelete(false);
+      return;
     }
-
-    const payload = stripSystemFields(formData);
-    setSaving(true);
-    if (editing) {
-      updateMut.mutate({ id: editing.id, data: payload });
-    } else {
-      // ponytail: ensure parent FK is set on create
-      payload[parentColumnName] = { id: parentId };
-      createMut.mutate(payload);
-    }
-    setDialogOpen(false);
-    setSaving(false);
+    deleteMut.mutate(ids, {
+      onSuccess: () => {
+        setRowSelection({});
+        setShowBulkDelete(false);
+      },
+    });
   }
 
   if (loading) {
@@ -114,100 +92,79 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" variant="outline" onClick={handleAdd}>
-          <Plus className="size-4" /> Add
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {selectedCount > 0 && (
+            <>
+              <span className="text-muted-foreground text-sm tabular-nums">{selectedCount} selected</span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowBulkDelete(true)}
+                disabled={deleteMut.isPending}
+              >
+                <Trash2 className="size-4" />
+                {deleteMut.isPending ? "Deleting..." : `Delete Selected (${selectedCount})`}
+              </Button>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Columns3 className="size-4" />
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {table
+                .getAllColumns()
+                .filter((c) => !TABLE_HIDDEN.has(c.id))
+                .map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                  >
+                    {column.id}
+                  </DropdownMenuCheckboxItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" asChild>
+            <Link href={`${childBase}/new`}>
+              <Plus className="size-4" /> Add
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm italic">No records. Click Add to create one.</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                {gridFields.map((f) => (
-                  <th key={f.columnName} className="px-3 py-2 text-left font-medium">
-                    {f.Name}
-                  </th>
-                ))}
-                <th className="px-3 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="border-t">
-                  {gridFields.map((f) => (
-                    <td key={f.columnName} className="px-3 py-2">
-                      {formatCell(row[f.columnName])}
-                    </td>
-                  ))}
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end gap-1">
-                      <Button size="icon-sm" variant="ghost" onClick={() => handleEdit(row)}>
-                        <Pencil className="size-3" />
-                      </Button>
-                      <Button size="icon-sm" variant="ghost" onClick={() => handleDelete(row)}>
-                        <Trash2 className="size-3 text-destructive" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <EntityTable table={table} basePath={childBase} resolveRowId={rowIdOf} />
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit" : "Add"} Record</DialogTitle>
-            <DialogDescription>
-              {editing ? "Update the record fields." : "Fill in the fields to create a new record."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2">
-            {formFields.map((f) => (
-              <FieldInput
-                key={f.columnName}
-                field={f}
-                value={formData[f.columnName]}
-                onChange={(v) => setFormData((prev) => ({ ...prev, [f.columnName]: v }))}
-                readOnly={f.isReadOnly === true}
-              />
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Delete record?"
-        description="This action cannot be undone. The record will be permanently removed."
-        confirmText="Delete"
+        open={showBulkDelete}
+        onOpenChange={setShowBulkDelete}
+        title={`Delete ${selectedCount} record(s)?`}
+        description="This action cannot be undone. All selected records will be permanently deleted."
+        confirmText="Delete All"
         destructive
-        onConfirm={confirmDelete}
+        onConfirm={confirmBulkDelete}
+        loading={deleteMut.isPending}
       />
     </div>
   );
 }
 
-function formatCell(val: unknown): string {
-  if (val === undefined || val === null) return "-";
-  if (typeof val === "object" && val !== null && "identifier" in val) {
-    return String((val as { identifier?: string }).identifier ?? "-");
-  }
-  if (typeof val === "boolean") return val ? "Yes" : "No";
-  return String(val);
+// ponytail: iDempiere returns synthetic `id` for most tables, but some omit it — fall back to the numeric PK column.
+function rowIdOf(row: EntityRow): number | string | undefined {
+  if (row.id != null) return row.id;
+  // ponytail: some tables (e.g. r_contactinterest) expose only `uid` (UUID), no numeric id
+  if (row.uid != null) return row.uid;
+  const pkKey = Object.keys(row).find((k) => /_ID$/i.test(k) && typeof row[k] === "number");
+  return pkKey ? (row[pkKey] as number) : undefined;
 }

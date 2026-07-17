@@ -122,12 +122,30 @@ export function isFormField(columnName: string): boolean {
   return !isSystemField(columnName);
 }
 
-/** Remove system/audit fields from a record before create/update API call */
+/** Derive a lowercased table name from an FK column name: "AD_User_ID" → "ad_user". Used to match a child tab to its parent tab's table. */
+export function deriveTable(columnName?: string): string {
+  if (!columnName) return "";
+  return columnName.replace(/_ID$/i, "").toLowerCase();
+}
+
+// ponytail: audit/REST-meta fields stripped from payloads — AD_Client_ID/AD_Org_ID are KEPT (iDempiere requires them)
+const AUDIT_COLUMNS = new Set(["id", "uid", "model-name", "Created", "Updated", "CreatedBy", "UpdatedBy"]);
+
+/** Remove audit/REST-meta fields before create/update. Keeps AD_Client_ID/AD_Org_ID (required by iDempiere). */
 export function stripSystemFields(data: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data)) {
-    if (isSystemField(k)) continue;
+    if (AUDIT_COLUMNS.has(k) || k.endsWith("_UU")) continue;
     out[k] = v;
+  }
+  return out;
+}
+
+/** Normalize FK reference objects ({id, identifier, model-name, ...}) to {id} for clean API payloads. */
+export function normalizeRefs(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = v && typeof v === "object" && "id" in v ? { id: (v as { id: unknown }).id } : v;
   }
   return out;
 }
@@ -141,6 +159,8 @@ export function stripSystemFields(data: Record<string, unknown>): Record<string,
 export function validateMandatory(fields: WindowField[], data: Record<string, unknown>): string | null {
   for (const f of fields) {
     if (f.isMandatory) {
+      // ponytail: org/client/audit are server-managed — not client-validated (AD_Org_ID=0 is valid "*")
+      if (isSystemField(f.columnName)) continue;
       const val = data[f.columnName];
       // ponytail: FK objects with id=0 or id=null are treated as empty
       if (val !== undefined && val !== null && typeof val === "object" && "id" in val) {

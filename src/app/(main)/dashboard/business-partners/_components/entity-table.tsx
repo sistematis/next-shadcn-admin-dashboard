@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { flexRender, type Table as TableType } from "@tanstack/react-table";
 import { ArrowUpDown, ChevronDown, ChevronUp } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Pagination,
   PaginationContent,
@@ -38,8 +37,18 @@ function getPageNumbers(currentPage: number, pageCount: number) {
   return [currentPage - 1, currentPage, currentPage + 1];
 }
 
-export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; basePath: string }) {
+export function EntityTable({
+  table,
+  basePath,
+  resolveRowId,
+}: {
+  table: TableType<EntityRow>;
+  basePath: string;
+  resolveRowId?: (row: EntityRow) => string | number | undefined;
+}) {
   const router = useRouter();
+  // ponytail: id for navigation — default to entity id; child grids pass a resolver (some tables omit `id`)
+  const idOf = resolveRowId ?? ((r: EntityRow) => r.id ?? r.uid);
   const pageCount = Math.max(table.getPageCount(), 1);
   const currentPage = Math.min(table.getState().pagination.pageIndex + 1, pageCount);
   const pageNumbers = getPageNumbers(currentPage, pageCount);
@@ -62,7 +71,7 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
           ? table.getRowModel().rows.map((row) => (
               <Link
                 key={row.id}
-                href={`${basePath}/${row.original.id}`}
+                href={`${basePath}/${idOf(row.original)}`}
                 className="block cursor-pointer rounded-lg border p-4 hover:bg-accent/50"
               >
                 {cardFields.map((col) => (
@@ -119,7 +128,10 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
                   key={row.id}
                   className="border-border/60 hover:bg-white/2.5 cursor-pointer"
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => router.push(`${basePath}/${row.id}`)}
+                  onClick={() => {
+                    const id = idOf(row.original);
+                    if (id !== "" && id != null) router.push(`${basePath}/${id}`);
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell

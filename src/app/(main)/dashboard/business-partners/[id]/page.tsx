@@ -8,7 +8,7 @@ export default async function EditPartnerPage({ params }: { params: Promise<{ id
       modelName="c_bpartner"
       basePath="/dashboard/business-partners"
       title="Business Partner"
-      entityId={Number(id)}
+      entityId={id}
     />
   );
 }

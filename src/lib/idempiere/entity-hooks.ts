@@ -24,7 +24,7 @@ import type { WindowField, WindowTab } from "./types";
 
 // ── Types ────────────────────────────────────────────────────
 
-export type EntityRow = Record<string, unknown> & { id: number };
+export type EntityRow = Record<string, unknown> & { id?: number; uid?: string };
 
 export interface EntityQueryParams {
   page: number; // 0-indexed
@@ -41,7 +41,7 @@ export const ALL_STATUS_FILTER = "IsActive eq true or IsActive eq false";
 
 const qk = {
   list: (model: string, params: EntityQueryParams) => ["entity", model, "list", params] as const,
-  detail: (model: string, id: number) => ["entity", model, "detail", id] as const,
+  detail: (model: string, id: number | string) => ["entity", model, "detail", id] as const,
   tabs: (windowSlug: string) => ["window", windowSlug, "tabs"] as const,
   fields: (tabId: number) => ["window", "fields", tabId] as const,
   fkOptions: (modelName: string) => ["fk-options", modelName] as const,
@@ -168,7 +168,7 @@ export function useEntityList(modelName: string, params: EntityQueryParams) {
 
 // ── Entity Detail ─────────────────────────────────────────────
 
-export function useEntityDetail(modelName: string, id: number | null) {
+export function useEntityDetail(modelName: string, id: number | string | null) {
   return useQuery({
     queryKey: qk.detail(modelName, id ?? 0),
     queryFn: async () => {
@@ -202,7 +202,7 @@ export function useCreateEntity(modelName: string) {
 export function useUpdateEntity(modelName: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+    mutationFn: ({ id, data }: { id: number | string; data: Record<string, unknown> }) => {
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
       return updateModel(modelName, id, data, token);
@@ -219,7 +219,7 @@ export function useUpdateEntity(modelName: string) {
 export function useDeleteEntity(modelName: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => {
+    mutationFn: (id: number | string) => {
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
       return deleteModel(modelName, id, token);
@@ -232,7 +232,7 @@ export function useDeleteEntity(modelName: string) {
 export function useBulkDelete(modelName: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (ids: number[]): Promise<PromiseSettledResult<void>[]> => {
+    mutationFn: async (ids: (number | string)[]): Promise<PromiseSettledResult<void>[]> => {
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
       return Promise.allSettled(ids.map((id) => deleteModel(modelName, id, token)));
@@ -294,7 +294,7 @@ export function useListOptions(refListId: number) {
 // ── Child Records ────────────────────────────────────────────────
 
 /** Fetch child records filtered by parent FK — cached, auto-refetches on tab switch */
-export function useChildRecords(tableName: string, parentColumnName: string, parentId: number) {
+export function useChildRecords(tableName: string, parentColumnName: string, parentId: number | string) {
   return useQuery({
     queryKey: ["entity", tableName, "children", parentColumnName, parentId] as const,
     queryFn: async () => {

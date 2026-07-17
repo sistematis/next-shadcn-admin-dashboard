@@ -7,7 +7,7 @@ export function ClientEditPartnerPage(props: {
   modelName: string;
   basePath: string;
   title: string;
-  entityId: number;
+  entityId: number | string;
 }) {
   return <EntityFormPage {...props} />;
 }

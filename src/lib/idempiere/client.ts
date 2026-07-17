@@ -236,8 +236,8 @@ export async function getModels<T>(model: string, token: string, opts?: QueryOpt
   return apiRequest<QueryResponse<T>>(`/models/${model}${buildQueryString(opts)}`, { token });
 }
 
-/** GET /models/{model}/{id} — get single record */
-export async function getModel<T>(model: string, id: number, token: string): Promise<T> {
+/** GET /models/{model}/{id} — get single record (id may be numeric or uid/UUID) */
+export async function getModel<T>(model: string, id: number | string, token: string): Promise<T> {
   return apiRequest<T>(`/models/${model}/${id}`, { token });
 }
 
@@ -253,7 +253,7 @@ export async function createModel<T>(model: string, data: Record<string, unknown
 /** PUT /models/{model}/{id} — update record */
 export async function updateModel<T>(
   model: string,
-  id: number,
+  id: number | string,
   data: Record<string, unknown>,
   token: string,
 ): Promise<T> {
@@ -264,8 +264,8 @@ export async function updateModel<T>(
   });
 }
 
-/** DELETE /models/{model}/{id} — remove record */
-export async function deleteModel(model: string, id: number, token: string): Promise<void> {
+/** DELETE /models/{model}/{id} — remove record (id may be numeric or uid/UUID) */
+export async function deleteModel(model: string, id: number | string, token: string): Promise<void> {
   await apiRequest(`/models/${model}/${id}`, { method: "DELETE", token });
 }
 

@@ -1,9 +1,6 @@
 "use client";
 
-import * as React from "react";
-
 import { HelpCircle } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -16,16 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { getModels } from "@/lib/idempiere/client";
 import { evaluateDisplayLogic } from "@/lib/idempiere/display-logic";
+import { useAllTabFields, useFKOptions, useListOptions, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
 import {
-  ALL_STATUS_FILTER,
-  useAllTabFields,
-  useFKOptions,
-  useListOptions,
-  useWindowTabsCached,
-} from "@/lib/idempiere/entity-hooks";
-import {
+  deriveTable,
   isBooleanField,
   isDateField,
   isFKField,
@@ -34,7 +25,6 @@ import {
   isNumberField,
   isTextareaField,
 } from "@/lib/idempiere/field-utils";
-import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
 // biome-ignore lint/suspicious/noImportCycles: parent-child cycle is harmless for tree-shaking
@@ -42,16 +32,17 @@ import { ChildTabGrid } from "./child-tab-grid";
 
 const MAX_TAB_LEVEL = 2;
 
-export type EntityRow = Record<string, unknown> & { id: number };
+export type EntityRow = Record<string, unknown> & { id?: number; uid?: string };
 
 interface EntityTabsViewProps {
   windowSlug?: string;
-  entityId: number | null; // null = add mode (only header tab shown)
+  entityId: number | string | null; // null = add mode (only current tab shown)
   activeTab: string;
   onTabChange: (slug: string) => void;
   data: EntityRow | null;
   onDataChange: (columnName: string, value: unknown) => void;
   readOnly?: boolean;
+  currentTabSlug?: string; // which tab this form renders (default: header/level-0); its direct children render as grids
 }
 
 export function EntityTabsView({
@@ -62,6 +53,7 @@ export function EntityTabsView({
   data,
   onDataChange,
   readOnly = false,
+  currentTabSlug,
 }: EntityTabsViewProps) {
   const { data: tabData, isPending: tabsLoading } = useWindowTabsCached(windowSlug);
   const tabs = tabData?.tabs ?? [];
@@ -81,9 +73,21 @@ export function EntityTabsView({
     return <p className="text-muted-foreground text-sm">No fields available.</p>;
   }
 
-  const headerTableName = tabs.find((t) => t.TabLevel === 0)?.tableName;
-  const visibleTabs = entityId ? tabs : tabs.filter((t) => t.TabLevel === 0);
-  const defaultTab = visibleTabs[0]?.slug ?? windowSlug;
+  const currentTab =
+    (currentTabSlug ? tabs.find((t) => t.slug === currentTabSlug) : undefined) ??
+    tabs.find((t) => t.TabLevel === 0) ??
+    tabs[0];
+  if (!currentTab) return null;
+  // ponytail: direct children = one level deeper whose parent column resolves to this tab's table
+  const directChildren = tabs.filter(
+    (t) =>
+      t.TabLevel === currentTab.TabLevel + 1 &&
+      !!t.tableName &&
+      !!currentTab.tableName &&
+      deriveTable(t.parentColumnName) === currentTab.tableName,
+  );
+  const visibleTabs = entityId ? [currentTab, ...directChildren] : [currentTab];
+  const defaultTab = currentTab.slug;
 
   return (
     <Tabs value={activeTab || defaultTab} onValueChange={onTabChange} className="w-full">
@@ -100,34 +104,22 @@ export function EntityTabsView({
         const fields = (fieldsByTab[tab.slug] ?? [])
           .filter((f) => f.isDisplayed !== false && isFormField(f.columnName))
           .sort((a, b) => (a.seqNo ?? 999) - (b.seqNo ?? 999));
-        const isLevel2 = tab.TabLevel === 2;
-        const isChildTab = tab.TabLevel > 0 && tab.tableName !== headerTableName;
         const parentCol = tab.parentColumnName ?? "C_BPartner_ID";
-        // ponytail: for level-2 tabs, find the level-1 tab that links header to this tab
-        const level1Tab = tabs.find((t) => t.TabLevel === 1 && t.tableName === parentCol);
+        const isCurrent = tab.slug === currentTab.slug;
         return (
           <TabsContent key={tab.slug} value={tab.slug} className="mt-4">
-            {isChildTab && entityId && tab.tableName ? (
-              isLevel2 ? (
-                <Level2TabGrid
-                  tableName={tab.tableName}
-                  parentColumnName={parentCol}
-                  headerId={entityId}
-                  parentTabTableName={level1Tab?.tableName}
-                  fields={fieldsByTab[tab.slug] ?? []}
-                />
-              ) : (
-                <ChildTabGrid
-                  tableName={tab.tableName}
-                  parentColumnName={parentCol}
-                  parentId={entityId}
-                  fields={fieldsByTab[tab.slug] ?? []}
-                />
-              )
-            ) : isChildTab ? (
-              <p className="text-muted-foreground text-sm italic">Save the record first to add child records.</p>
-            ) : (
+            {isCurrent ? (
               <FieldGroupRenderer fields={fields} data={data} onDataChange={onDataChange} readOnly={readOnly} />
+            ) : entityId && tab.tableName ? (
+              <ChildTabGrid
+                tableName={tab.tableName}
+                parentColumnName={parentCol}
+                parentId={entityId}
+                tabSlug={tab.slug}
+                fields={fieldsByTab[tab.slug] ?? []}
+              />
+            ) : (
+              <p className="text-muted-foreground text-sm italic">Save the record first to add child records.</p>
             )}
           </TabsContent>
         );
@@ -202,67 +194,6 @@ function FieldGroupRenderer({
       ))}
     </div>
   );
-}
-
-/** Level2TabGrid — level-2 tabs link via intermediate parent table */
-function Level2TabGrid({
-  tableName,
-  parentColumnName,
-  headerId,
-  parentTabTableName,
-  fields,
-}: {
-  tableName: string;
-  parentColumnName: string;
-  headerId: number;
-  parentTabTableName?: string;
-  fields: WindowField[];
-}) {
-  const [parentId, setParentId] = React.useState<number | null>(null);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (!parentTabTableName) {
-        if (!cancelled) setLoading(false);
-        return;
-      }
-      try {
-        const token = getTokenFromStorage();
-        if (!token) return;
-        const resp = await getModels<{ id: number }>(parentTabTableName, token, {
-          filter: `C_BPartner_ID eq ${headerId} and (${ALL_STATUS_FILTER})`,
-          orderby: "id asc",
-          top: 1,
-        });
-        if (!cancelled && resp.records.length > 0) {
-          setParentId(resp.records[0].id);
-        }
-      } catch (err) {
-        console.error(`Failed to load parent record for ${parentTabTableName}:`, err);
-        toast.error(`Failed to load parent data. Please try again.`);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [headerId, parentTabTableName]);
-
-  if (loading) return <p className="text-muted-foreground text-sm">Loading...</p>;
-  if (!parentTabTableName) {
-    return <p className="text-muted-foreground text-sm italic">Parent tab not available (admin access required).</p>;
-  }
-  if (!parentId) {
-    return (
-      <p className="text-muted-foreground text-sm italic">
-        No parent record found. Add a record in the {parentTabTableName} tab first.
-      </p>
-    );
-  }
-  return <ChildTabGrid tableName={tableName} parentColumnName={parentColumnName} parentId={parentId} fields={fields} />;
 }
 
 export function FieldInput({
@@ -438,14 +369,6 @@ function FKSelect({
       </Popover>
     </div>
   );
-}
-
-function extractFkId(value: unknown): number | undefined {
-  if (typeof value === "number") return value;
-  if (typeof value === "object" && value !== null && "id" in value) {
-    return (value as { id: number }).id;
-  }
-  return undefined;
 }
 
 function extractFkLabel(value: unknown): string {
