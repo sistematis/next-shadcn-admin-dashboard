@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +19,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 import {
   useCreateEntity,
@@ -66,11 +68,15 @@ function formatRef(val: unknown): string {
   return String(val ?? "-");
 }
 
+// ponytail: documents lock when completed (Processed / DocStatus="CO"); master data stays editable
+function isRecordLocked(data: Record<string, unknown>): boolean {
+  return data?.Processed === true || data?.DocStatus === "CO";
+}
+
 function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId }: EntityFormPageProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const isEditMode = entityId !== undefined;
-  const [viewMode, setViewMode] = React.useState(isEditMode && searchParams.get("mode") === "view");
+  const [activeTab, setActiveTab] = React.useState("");
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
   const [isDirty, setIsDirty] = React.useState(false);
   useUnsavedGuard(isDirty);
@@ -83,6 +89,12 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
   const headerTabId = tabsData?.headerTab?.id;
   const { data: headerFields } = useTabFields(headerTabId ?? 0, windowSlug);
 
+  const tabs = tabsData?.tabs ?? [];
+  const visibleTabs = isEditMode ? tabs : tabs.filter((t) => t.TabLevel === 0);
+  const activeTabResolved = activeTab || visibleTabs[0]?.slug || windowSlug;
+  const activeTabMeta = tabs.find((t) => t.slug === activeTabResolved);
+  const locked = isEditMode && isRecordLocked(formData);
+
   React.useEffect(() => {
     if (entity) {
       setFormData(entity);
@@ -93,6 +105,12 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
   function handleFieldChange(columnName: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [columnName]: value }));
     setIsDirty(true);
+  }
+
+  // ponytail: IsActive toggles from the header switch — PATCH immediately, not via Save
+  function handleToggleActive(checked: boolean) {
+    setFormData((prev) => ({ ...prev, IsActive: checked }));
+    if (entityId !== undefined) updateMutation.mutate({ id: entityId, data: { IsActive: checked } });
   }
 
   async function handleSave() {
@@ -115,7 +133,6 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
       if (isEditMode) {
         await updateMutation.mutateAsync({ id: entityId!, data: payload });
         setIsDirty(false);
-        setViewMode(false);
       } else {
         await createMutation.mutateAsync(payload);
         setIsDirty(false);
@@ -172,41 +189,51 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  {isEditMode ? (
-                    <BreadcrumbPage>
-                      {viewMode ? "View" : "Edit"}: {entityName || `#${entityId}`}
-                    </BreadcrumbPage>
-                  ) : (
-                    <BreadcrumbPage>Add</BreadcrumbPage>
-                  )}
+                  <BreadcrumbPage>{isEditMode ? entityName || `#${entityId}` : "Add"}</BreadcrumbPage>
                 </BreadcrumbItem>
+                {isEditMode && activeTabMeta && activeTabMeta.TabLevel > 0 && (
+                  <>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage>{activeTabMeta.Name}</BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="flex gap-2">
-            {isEditMode && viewMode ? (
-              <Button onClick={() => setViewMode(false)}>
-                <ArrowLeft className="size-4 mr-2" />
-                Edit
+          <div className="flex items-center gap-2">
+            {isEditMode && !locked && (
+              <div className="flex items-center gap-2 pr-1">
+                <Switch
+                  id="is-active"
+                  checked={formData.IsActive !== false}
+                  onCheckedChange={handleToggleActive}
+                  disabled={updateMutation.isPending}
+                />
+                <Label htmlFor="is-active" className="text-muted-foreground text-sm">
+                  {formData.IsActive === false ? "Inactive" : "Active"}
+                </Label>
+              </div>
+            )}
+            <Button variant="outline" asChild>
+              <Link href={basePath}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
+            </Button>
+            {!locked && (
+              <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending || !isDirty}>
+                {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save"}
               </Button>
-            ) : (
-              <>
-                <Button variant="outline" asChild>
-                  <Link href={basePath}>Cancel</Link>
-                </Button>
-                <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
-                  {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save"}
-                </Button>
-              </>
             )}
           </div>
         </div>
         <EntityTabsView
           windowSlug={windowSlug}
           entityId={isEditMode ? entityId : null}
+          activeTab={activeTabResolved}
+          onTabChange={setActiveTab}
           data={!isEditMode && Object.keys(formData).length === 0 ? null : (formData as EntityRow)}
           onDataChange={handleFieldChange}
-          readOnly={isEditMode && viewMode}
+          readOnly={locked}
         />
 
         {/* ponytail: audit info — collapsible, read-only */}

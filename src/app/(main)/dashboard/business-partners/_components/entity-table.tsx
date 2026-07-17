@@ -49,7 +49,7 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
     () =>
       table
         .getVisibleLeafColumns()
-        .filter((c) => c.id !== "select" && c.id !== "actions")
+        .filter((c) => c.id !== "select")
         .slice(0, 3),
     [table],
   );
@@ -62,7 +62,7 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
           ? table.getRowModel().rows.map((row) => (
               <Link
                 key={row.id}
-                href={`${basePath}/${row.original.id}?mode=view`}
+                href={`${basePath}/${row.original.id}`}
                 className="block cursor-pointer rounded-lg border p-4 hover:bg-accent/50"
               >
                 {cardFields.map((col) => (
@@ -119,15 +119,15 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
                   key={row.id}
                   className="border-border/60 hover:bg-white/2.5 cursor-pointer"
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => router.push(`${basePath}/${row.id}?mode=view`)}
+                  onClick={() => router.push(`${basePath}/${row.id}`)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
                       className="px-3 py-4 align-middle"
                       onClick={(e) => {
-                        // ponytail: stop propagation for checkbox/action cells
-                        if (cell.column.id === "select" || cell.column.id === "actions") {
+                        // ponytail: stop propagation for checkbox cells
+                        if (cell.column.id === "select") {
                           e.stopPropagation();
                         }
                       }}

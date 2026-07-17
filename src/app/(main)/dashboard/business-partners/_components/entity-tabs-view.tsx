@@ -41,6 +41,8 @@ export type EntityRow = Record<string, unknown> & { id: number };
 interface EntityTabsViewProps {
   windowSlug?: string;
   entityId: number | null; // null = add mode (only header tab shown)
+  activeTab: string;
+  onTabChange: (slug: string) => void;
   data: EntityRow | null;
   onDataChange: (columnName: string, value: unknown) => void;
   readOnly?: boolean;
@@ -49,6 +51,8 @@ interface EntityTabsViewProps {
 export function EntityTabsView({
   windowSlug = "business-partner",
   entityId,
+  activeTab,
+  onTabChange,
   data,
   onDataChange,
   readOnly = false,
@@ -76,7 +80,7 @@ export function EntityTabsView({
   const defaultTab = visibleTabs[0]?.slug ?? windowSlug;
 
   return (
-    <Tabs defaultValue={defaultTab} className="w-full">
+    <Tabs value={activeTab || defaultTab} onValueChange={onTabChange} className="w-full">
       <ScrollArea className="w-full">
         <TabsList className="flex w-max">
           {visibleTabs.map((tab) => (

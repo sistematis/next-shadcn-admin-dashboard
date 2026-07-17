@@ -2,33 +2,19 @@
 "use no memo";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, MoreHorizontal, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 import { isBooleanField, isFKField, isNumberField, isPickableField } from "@/lib/idempiere/field-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
 // Columns excluded from the column picker (internal/helper columns)
-export const TABLE_HIDDEN = new Set(["search", "select", "actions"]);
+export const TABLE_HIDDEN = new Set(["search", "select"]);
 
-export interface RowActions {
-  onView: (row: EntityRow) => void;
-  onEdit: (row: EntityRow) => void;
-  onToggleActive: (row: EntityRow) => void;
-}
-
-/** Generate column defs from window field metadata + hardcoded chrome (select, search, actions) */
-export function buildColumns(fields: WindowField[], actions?: RowActions): ColumnDef<EntityRow>[] {
+/** Generate column defs from window field metadata + select chrome. Row actions live on the detail page. */
+export function buildColumns(fields: WindowField[]): ColumnDef<EntityRow>[] {
   const gridFields = fields.filter((f) => f.isDisplayedGrid !== false);
   gridFields.sort((a, b) => (a.seqNoGrid ?? 999) - (b.seqNoGrid ?? 999));
 
@@ -64,41 +50,6 @@ export function buildColumns(fields: WindowField[], actions?: RowActions): Colum
     const col = buildColumnDef(f);
     if (col) cols.push(col);
   }
-
-  cols.push({
-    id: "actions",
-    header: () => <div className="text-right">Actions</div>,
-    cell: ({ row }) => (
-      <div className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label="Open actions"
-              className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
-              size="icon-sm"
-              variant="ghost"
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => actions?.onView(row.original)}>View details</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => actions?.onEdit(row.original)}>Edit</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {/* biome-ignore lint/style/noNestedTernary: two-way toggle */}
-            <DropdownMenuItem
-              variant={row.original.IsActive === false ? "default" : "destructive"}
-              onClick={() => actions?.onToggleActive(row.original)}
-            >
-              {row.original.IsActive === false ? "Activate" : "Deactivate"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ),
-    enableHiding: false,
-    enableSorting: false,
-  });
 
   return cols;
 }

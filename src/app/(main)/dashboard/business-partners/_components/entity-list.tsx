@@ -28,14 +28,7 @@ import {
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { EntityRow } from "@/lib/idempiere/entity-hooks";
-import {
-  useBulkDelete,
-  useEntityList,
-  useTabFields,
-  useUpdateEntity,
-  useWindowTabsCached,
-} from "@/lib/idempiere/entity-hooks";
+import { useBulkDelete, useEntityList, useTabFields, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
 
 import { buildColumns, TABLE_HIDDEN } from "./entity-columns";
 import { EntityTable } from "./entity-table";
@@ -176,24 +169,8 @@ export function EntityList({
 
   // ── Mutations ─────────────────────────────────────────────
   const deleteMut = useBulkDelete(modelName);
-  const updateMut = useUpdateEntity(modelName);
 
-  const handleToggleActive = React.useCallback(
-    (row: EntityRow) => {
-      updateMut.mutate({ id: row.id, data: { IsActive: !(row.IsActive !== false) } });
-    },
-    [updateMut],
-  );
-
-  const columns = React.useMemo<ReturnType<typeof buildColumns>>(
-    () =>
-      buildColumns(fields, {
-        onView: (row) => router.push(`${basePath}/${row.id}?mode=view`),
-        onEdit: (row) => router.push(`${basePath}/${row.id}`),
-        onToggleActive: handleToggleActive,
-      }),
-    [fields, router, basePath, handleToggleActive],
-  );
+  const columns = React.useMemo<ReturnType<typeof buildColumns>>(() => buildColumns(fields), [fields]);
 
   // ── Table ─────────────────────────────────────────────────
   const table = useReactTable({
@@ -225,7 +202,7 @@ export function EntityList({
   function handleExport() {
     const rows = table.getRowModel().rows;
     if (!rows.length) return;
-    const visibleCols = table.getVisibleLeafColumns().filter((c) => c.id !== "select" && c.id !== "actions");
+    const visibleCols = table.getVisibleLeafColumns().filter((c) => c.id !== "select");
     const header = visibleCols.map((c) => c.id).join(",");
     const body = rows
       .map((r) =>
