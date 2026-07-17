@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { useRouter } from "next/navigation";
 
 import { ChevronsUpDown, LogOut } from "lucide-react";
@@ -21,13 +23,20 @@ import { getInitials } from "@/lib/utils";
 // ponytail: reads real session data from auth context — no hardcoded template users
 export function NavUser() {
   const { isMobile } = useSidebar();
-  const { logout, session } = useAuth();
+  const { logout, session: liveSession } = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
     await logout();
     router.push("/auth/v1/login");
   };
+
+  // ponytail: AuthProvider seeds session from client storage — null during SSR, present on
+  // the client's first render — which hydrates as "U" (server) vs the real initial (client).
+  // Gate on mount so pre-hydration output matches the server.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const session = mounted ? liveSession : null;
 
   const userName = session?.userName ?? "User";
   const roleLabel = [session?.roleName, session?.orgName].filter(Boolean).join(" · ");
