@@ -15,9 +15,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createModel, deleteModel, getModels, updateModel } from "@/lib/idempiere/client";
+import { useChildRecords, useCreateEntity, useDeleteEntity, useUpdateEntity } from "@/lib/idempiere/entity-hooks";
 import { isSystemField, stripSystemFields } from "@/lib/idempiere/field-utils";
-import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import type { WindowField } from "@/lib/idempiere/types";
 
 // biome-ignore lint/suspicious/noImportCycles: parent-child cycle is harmless for tree-shaking
@@ -34,8 +33,14 @@ interface ChildTabGridProps {
 }
 
 export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: ChildTabGridProps) {
-  const [rows, setRows] = React.useState<ChildRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  // Data query
+  const { data: rows = [], isPending: loading } = useChildRecords(tableName, parentColumnName, parentId);
+
+  // Mutations
+  const createMut = useCreateEntity(tableName);
+  const updateMut = useUpdateEntity(tableName);
+  const deleteMut = useDeleteEntity(tableName);
+
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ChildRow | null>(null);
   const [formData, setFormData] = React.useState<Record<string, unknown>>({});
@@ -56,28 +61,6 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
     [fields],
   );
 
-  const fetchChild = React.useCallback(async () => {
-    const token = getTokenFromStorage();
-    if (!token) return;
-    setLoading(true);
-    try {
-      const resp = await getModels<ChildRow>(tableName, token, {
-        filter: `${parentColumnName} eq ${parentId}`,
-        orderby: "id asc",
-        top: 50,
-      });
-      setRows(resp.records);
-    } catch {
-      toast.error(`Failed to load ${tableName}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [tableName, parentColumnName, parentId]);
-
-  React.useEffect(() => {
-    void fetchChild();
-  }, [fetchChild]);
-
   function handleAdd() {
     setEditing(null);
     setFormData({ [parentColumnName]: { id: parentId } });
@@ -90,29 +73,17 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
     setDialogOpen(true);
   }
 
-  async function handleDelete(row: ChildRow) {
+  function handleDelete(row: ChildRow) {
     setDeleteTarget(row);
   }
 
-  async function confirmDelete() {
+  function confirmDelete() {
     if (!deleteTarget) return;
-    const token = getTokenFromStorage();
-    if (!token) return;
-    try {
-      await deleteModel(tableName, deleteTarget.id, token);
-      toast.success("Deleted");
-      await fetchChild();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
-    } finally {
-      setDeleteTarget(null);
-    }
+    deleteMut.mutate(deleteTarget.id);
+    setDeleteTarget(null);
   }
 
-  async function handleSave() {
-    const token = getTokenFromStorage();
-    if (!token) return;
-
+  function handleSave() {
     // ponytail: mandatory validation — server enforces too, but better UX to catch early
     for (const f of formFields) {
       if (f.isMandatory) {
@@ -126,24 +97,15 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, fields }: 
 
     const payload = stripSystemFields(formData);
     setSaving(true);
-    try {
-      if (editing) {
-        await updateModel(tableName, editing.id, payload, token);
-        toast.success("Updated");
-      } else {
-        // ponytail: ensure parent FK is set on create
-        payload[parentColumnName] = { id: parentId };
-        await createModel(tableName, payload, token);
-        toast.success("Created");
-      }
-      setDialogOpen(false);
-      await fetchChild();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Save failed";
-      toast.error(msg);
-    } finally {
-      setSaving(false);
+    if (editing) {
+      updateMut.mutate({ id: editing.id, data: payload });
+    } else {
+      // ponytail: ensure parent FK is set on create
+      payload[parentColumnName] = { id: parentId };
+      createMut.mutate(payload);
     }
+    setDialogOpen(false);
+    setSaving(false);
   }
 
   if (loading) {

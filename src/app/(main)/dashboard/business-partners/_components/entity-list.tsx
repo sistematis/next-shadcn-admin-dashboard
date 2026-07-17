@@ -14,7 +14,7 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Columns3, Download, Plus, SearchX, Trash2 } from "lucide-react";
+import { AlertCircle, Columns3, Download, Plus, RefreshCw, SearchX, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import {
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 import {
   useBulkDelete,
   useEntityList,
@@ -90,7 +91,7 @@ export function EntityList({
   // ── Data queries ──────────────────────────────────────────
   const { tabs, headerTab } = useWindowTabsCached(windowSlug).data ?? {};
   const { data: fields = [] } = useTabFields(headerTab?.id ?? 0, windowSlug);
-  const { data, isPending, isFetching } = useEntityList(modelName, {
+  const { data, isPending, isFetching, isError, refetch } = useEntityList(modelName, {
     page: pagination.pageIndex,
     pageSize: pagination.pageSize,
     search: debouncedSearch || undefined,
@@ -146,13 +147,13 @@ export function EntityList({
   // ── URL sync ─────────────────────────────────────────────
   React.useEffect(() => {
     const params = new URLSearchParams();
-    if (search) params.set("q", search);
+    if (debouncedSearch) params.set("q", debouncedSearch);
     if (pagination.pageIndex !== 0) params.set("page", String(pagination.pageIndex));
     if (sorting[0]) params.set("sort", `${sorting[0].id}:${sorting[0].desc ? "desc" : "asc"}`);
     if (statusFilter !== "All") params.set("status", statusFilter);
     const queryString = params.toString();
     router.replace(queryString ? `?${queryString}` : window.location.pathname, { scroll: false });
-  }, [search, pagination.pageIndex, sorting, statusFilter, router]);
+  }, [debouncedSearch, pagination.pageIndex, sorting, statusFilter, router]);
 
   // ── Keyboard shortcuts ────────────────────────────────────
   React.useEffect(() => {
@@ -177,17 +178,21 @@ export function EntityList({
   const deleteMut = useBulkDelete(modelName);
   const updateMut = useUpdateEntity(modelName);
 
+  const handleToggleActive = React.useCallback(
+    (row: EntityRow) => {
+      updateMut.mutate({ id: row.id, data: { IsActive: !(row.IsActive !== false) } });
+    },
+    [updateMut],
+  );
+
   const columns = React.useMemo<ReturnType<typeof buildColumns>>(
     () =>
       buildColumns(fields, {
         onView: (row) => router.push(`${basePath}/${row.id}?mode=view`),
         onEdit: (row) => router.push(`${basePath}/${row.id}`),
-        onToggleActive: async (row) => {
-          const newActive = !(row.IsActive !== false);
-          updateMut.mutate({ id: row.id, data: { IsActive: newActive } });
-        },
+        onToggleActive: handleToggleActive,
       }),
-    [fields, router, basePath, updateMut],
+    [fields, router, basePath, handleToggleActive],
   );
 
   // ── Table ─────────────────────────────────────────────────
@@ -357,6 +362,20 @@ export function EntityList({
           <EntityTableSkeleton
             columnCount={Math.min(fields.filter((f) => f.isDisplayedGrid !== false).length || 5, 8)}
           />
+        ) : isError ? (
+          <Empty className="py-12">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <AlertCircle className="size-4" />
+              </EmptyMedia>
+              <EmptyTitle>Failed to load records</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="sm" variant="outline" onClick={() => refetch()}>
+                <RefreshCw className="size-4" /> Retry
+              </Button>
+            </EmptyContent>
+          </Empty>
         ) : records.length === 0 ? (
           <Empty className="py-12">
             <EmptyHeader>

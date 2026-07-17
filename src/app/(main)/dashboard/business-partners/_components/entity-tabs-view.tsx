@@ -3,7 +3,10 @@
 import * as React from "react";
 
 import { HelpCircle } from "lucide-react";
+import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -15,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getModels } from "@/lib/idempiere/client";
 import { evaluateDisplayLogic } from "@/lib/idempiere/display-logic";
-import { useAllTabFields, useFKOptions, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
+import { useAllTabFields, useFKOptions, useListOptions, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
 import {
   isBooleanField,
   isDateField,
@@ -172,8 +175,9 @@ function FieldGroupRenderer({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {b.fields.map((f) => {
               const span = fieldGridSpan(f.columnSpan);
+              const start = fieldGridStart(f.xPosition);
               return (
-                <div key={f.columnName} className={span}>
+                <div key={f.columnName} className={`${span} ${start}`}>
                   <FieldInput
                     field={f}
                     value={data?.[f.columnName]}
@@ -225,8 +229,9 @@ function Level2TabGrid({
         if (!cancelled && resp.records.length > 0) {
           setParentId(resp.records[0].id);
         }
-      } catch {
-        /* no parent records */
+      } catch (err) {
+        console.error(`Failed to load parent record for ${parentTabTableName}:`, err);
+        toast.error(`Failed to load parent data. Please try again.`);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -357,7 +362,7 @@ export function FieldInput({
   );
 }
 
-// ponytail: FK lookup Select — now uses TanStack Query cache (shared across all FKSelect for same model)
+// ponytail: FK lookup — searchable combobox with TanStack Query cache (shared across all FKSelect for same model)
 function FKSelect({
   field,
   value,
@@ -373,7 +378,6 @@ function FKSelect({
   const modelName = field.reference?.["model-name"];
   const { data: options = [], isLoading } = useFKOptions(modelName);
 
-  const currentId = extractFkId(value);
   const currentLabel = extractFkLabel(value);
 
   if (readOnly) {
@@ -397,25 +401,31 @@ function FKSelect({
   return (
     <div className="flex flex-col gap-1.5">
       <FieldLabel label={label} isMandatory={field.isMandatory} help={Help} />
-      <Select
-        value={currentId ? String(currentId) : undefined}
-        onValueChange={(v) => {
-          const id = Number(v);
-          const opt = options.find((o) => o.id === id);
-          onChange(opt ? { id: opt.id, identifier: opt.name } : { id });
-        }}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={isLoading ? "Loading..." : (Description ?? "Select...")} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((opt) => (
-            <SelectItem key={opt.id} value={String(opt.id)}>
-              {opt.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" role="combobox" className="w-full justify-between">
+            {currentLabel || (isLoading ? "Loading..." : (Description ?? "Select..."))}
+            <HelpCircle className="ml-2 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search..." />
+            <CommandList>
+              <CommandEmpty>No match found.</CommandEmpty>
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt.id}
+                  value={opt.name}
+                  onSelect={() => onChange({ id: opt.id, identifier: opt.name })}
+                >
+                  {opt.name}
+                </CommandItem>
+              ))}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -446,6 +456,12 @@ function fieldGridSpan(columnSpan?: number): string {
     default:
       return "sm:col-span-1 lg:col-span-1";
   }
+}
+
+// ponytail: map xPosition (1-12) to 3-col grid: 1=start, 2=middle, 3=end. Values >3 default to auto-placement.
+function fieldGridStart(xPosition?: number): string {
+  if (!xPosition || xPosition < 1 || xPosition > 3) return "";
+  return `lg:col-start-${xPosition}`;
 }
 
 function FieldLabel({
@@ -485,7 +501,7 @@ function FieldHelp({ text }: { text: string }) {
   );
 }
 
-/** List-type dropdown — fetches options from AD_Ref_List by referenceValueId */
+/** List-type dropdown — uses cached TanStack Query hook for AD_Ref_List options */
 function ListSelect({
   field,
   value,
@@ -499,8 +515,7 @@ function ListSelect({
 }) {
   const { columnName: key, Name: label, Description, Help } = field;
   const refListId = field.referenceValueId;
-  const [options, setOptions] = React.useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const { data: options = [], isLoading } = useListOptions(refListId ?? 0);
 
   const currentId =
     typeof value === "object" && value !== null && "id" in value
@@ -508,39 +523,6 @@ function ListSelect({
       : typeof value === "string"
         ? value
         : "";
-
-  React.useEffect(() => {
-    if (!refListId || readOnly) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const token = getTokenFromStorage();
-        if (!token) {
-          setLoading(false);
-          return;
-        }
-        const resp = await getModels<{ id: number; Value?: string; Name?: string }>("ad_ref_list", token, {
-          filter: `AD_Reference_ID eq ${refListId}`,
-          select: "Value,Name",
-          orderby: "Name asc",
-          top: 100,
-        });
-        if (!cancelled) {
-          setOptions(resp.records.map((r) => ({ id: r.Value ?? String(r.id), name: r.Name ?? r.Value ?? "?" })));
-        }
-      } catch {
-        /* fallback to text input */
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refListId, readOnly]);
 
   if (readOnly || !refListId) {
     const display =
@@ -566,7 +548,7 @@ function ListSelect({
         }}
       >
         <SelectTrigger className="w-full">
-          <SelectValue placeholder={loading ? "Loading..." : (Description ?? "Select...")} />
+          <SelectValue placeholder={isLoading ? "Loading..." : (Description ?? "Select...")} />
         </SelectTrigger>
         <SelectContent>
           {options.map((opt) => (

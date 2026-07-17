@@ -287,3 +287,24 @@ export function useListOptions(refListId: number) {
     staleTime: 10 * 60 * 1000, // ponytail: 10min — reference data changes rarely
   });
 }
+
+// ── Child Records ────────────────────────────────────────────────
+
+/** Fetch child records filtered by parent FK — cached, auto-refetches on tab switch */
+export function useChildRecords(tableName: string, parentColumnName: string, parentId: number) {
+  return useQuery({
+    queryKey: ["entity", tableName, "children", parentColumnName, parentId] as const,
+    queryFn: async () => {
+      const token = getTokenFromStorage();
+      if (!token) throw new Error("Not authenticated");
+      const resp = await getModels<EntityRow>(tableName, token, {
+        filter: `${parentColumnName} eq ${parentId}`,
+        orderby: "id asc",
+        top: 200,
+      });
+      return resp.records;
+    },
+    enabled: !!tableName && !!parentId,
+    staleTime: 30_000, // ponytail: 30sec — child data changes rarely
+  });
+}

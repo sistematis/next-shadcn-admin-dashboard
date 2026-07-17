@@ -2,6 +2,7 @@
 "use no memo";
 
 import type { MouseEvent } from "react";
+import * as React from "react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -43,6 +44,16 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
   const currentPage = Math.min(table.getState().pagination.pageIndex + 1, pageCount);
   const pageNumbers = getPageNumbers(currentPage, pageCount);
 
+  // ponytail: mobile card fields — derive first 3 visible grid fields from metadata
+  const cardFields = React.useMemo(
+    () =>
+      table
+        .getVisibleLeafColumns()
+        .filter((c) => c.id !== "select" && c.id !== "actions")
+        .slice(0, 3),
+    [table],
+  );
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* Responsive card view for mobile */}
@@ -54,19 +65,16 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
                 href={`${basePath}/${row.original.id}?mode=view`}
                 className="block cursor-pointer rounded-lg border p-4 hover:bg-accent/50"
               >
-                <div className="font-medium text-foreground">{String(row.original.Name ?? "(unnamed)")}</div>
-                <div className="text-muted-foreground text-sm">{String(row.original.Value ?? "")}</div>
-                <div className="mt-2">
-                  {row.original.IsActive === false ? (
-                    <Badge variant="outline" className="gap-1 text-red-600">
-                      Inactive
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="gap-1 text-emerald-600">
-                      Active
-                    </Badge>
-                  )}
-                </div>
+                {cardFields.map((col) => (
+                  <div
+                    key={col.id}
+                    className={
+                      col.id === cardFields[0]?.id ? "font-medium text-foreground" : "text-muted-foreground text-sm"
+                    }
+                  >
+                    {String(row.original[col.id] ?? "")}
+                  </div>
+                ))}
               </Link>
             ))
           : null}
@@ -83,6 +91,7 @@ export function EntityTable({ table, basePath }: { table: TableType<EntityRow>; 
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
                       <button
                         type="button"
+                        aria-label={`Sort by ${typeof header.column.columnDef.header === "string" ? header.column.columnDef.header : "column"}`}
                         className="-ml-1 flex items-center gap-1 hover:text-foreground"
                         onClick={() => header.column.toggleSorting(header.column.getIsSorted() === "asc")}
                       >
