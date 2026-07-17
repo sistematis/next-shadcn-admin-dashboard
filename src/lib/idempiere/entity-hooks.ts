@@ -34,6 +34,9 @@ export interface EntityQueryParams {
   orderBy?: string;
 }
 
+// ponytail: iDempiere defaults model queries to IsActive=true — explicitly request both states
+export const ALL_STATUS_FILTER = "IsActive eq true or IsActive eq false";
+
 // ── Query Keys ───────────────────────────────────────────────
 
 const qk = {
@@ -298,7 +301,7 @@ export function useChildRecords(tableName: string, parentColumnName: string, par
       const token = getTokenFromStorage();
       if (!token) throw new Error("Not authenticated");
       const resp = await getModels<EntityRow>(tableName, token, {
-        filter: `${parentColumnName} eq ${parentId}`,
+        filter: `${parentColumnName} eq ${parentId} and (${ALL_STATUS_FILTER})`,
         orderby: "id asc",
         top: 200,
       });

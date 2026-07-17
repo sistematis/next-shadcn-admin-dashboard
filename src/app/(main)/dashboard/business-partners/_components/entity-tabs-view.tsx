@@ -18,7 +18,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getModels } from "@/lib/idempiere/client";
 import { evaluateDisplayLogic } from "@/lib/idempiere/display-logic";
-import { useAllTabFields, useFKOptions, useListOptions, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
+import {
+  ALL_STATUS_FILTER,
+  useAllTabFields,
+  useFKOptions,
+  useListOptions,
+  useWindowTabsCached,
+} from "@/lib/idempiere/entity-hooks";
 import {
   isBooleanField,
   isDateField,
@@ -226,7 +232,7 @@ function Level2TabGrid({
         const token = getTokenFromStorage();
         if (!token) return;
         const resp = await getModels<{ id: number }>(parentTabTableName, token, {
-          filter: `C_BPartner_ID eq ${headerId}`,
+          filter: `C_BPartner_ID eq ${headerId} and (${ALL_STATUS_FILTER})`,
           orderby: "id asc",
           top: 1,
         });

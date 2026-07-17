@@ -28,7 +28,13 @@ import {
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useBulkDelete, useEntityList, useTabFields, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
+import {
+  ALL_STATUS_FILTER,
+  useBulkDelete,
+  useEntityList,
+  useTabFields,
+  useWindowTabsCached,
+} from "@/lib/idempiere/entity-hooks";
 
 import { buildColumns, TABLE_HIDDEN } from "./entity-columns";
 import { EntityTable } from "./entity-table";
@@ -94,7 +100,7 @@ export function EntityList({
         ? "IsActive eq true"
         : statusFilter === "Inactive"
           ? "IsActive eq false"
-          : "IsActive eq true or IsActive eq false",
+          : ALL_STATUS_FILTER,
   });
 
   const records = data?.records ?? [];

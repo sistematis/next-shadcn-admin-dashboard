@@ -19,8 +19,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 import {
   useCreateEntity,
@@ -105,12 +103,6 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
   function handleFieldChange(columnName: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [columnName]: value }));
     setIsDirty(true);
-  }
-
-  // ponytail: IsActive toggles from the header switch — PATCH immediately, not via Save
-  function handleToggleActive(checked: boolean) {
-    setFormData((prev) => ({ ...prev, IsActive: checked }));
-    if (entityId !== undefined) updateMutation.mutate({ id: entityId, data: { IsActive: checked } });
   }
 
   async function handleSave() {
@@ -203,19 +195,6 @@ function EntityFormPageInner({ windowSlug, modelName, basePath, title, entityId 
             </Breadcrumb>
           </div>
           <div className="flex items-center gap-2">
-            {isEditMode && !locked && (
-              <div className="flex items-center gap-2 pr-1">
-                <Switch
-                  id="is-active"
-                  checked={formData.IsActive !== false}
-                  onCheckedChange={handleToggleActive}
-                  disabled={updateMutation.isPending}
-                />
-                <Label htmlFor="is-active" className="text-muted-foreground text-sm">
-                  {formData.IsActive === false ? "Inactive" : "Active"}
-                </Label>
-              </div>
-            )}
             <Button variant="outline" asChild>
               <Link href={basePath}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
             </Button>
