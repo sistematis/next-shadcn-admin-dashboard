@@ -94,3 +94,23 @@ Keep a component inside its route until it is reused by another feature. Do not 
 - Include screenshots for new screens and material visual changes. Include mobile and dark-theme states when relevant.
 - Explain new reusable patterns or dependencies in the pull request.
 - Follow `CONTRIBUTING.md` for the contribution workflow.
+
+## ERP Frontend Deploy (read parent CLAUDE.md for full detail)
+
+This frontend deploys as a Docker image. **Build on the builder server** (172.16.99.19), not on prod.
+
+```bash
+ssh builder "cd /opt/erp/frontend && git pull --ff-only origin main && docker build -q -t 172.16.99.19:5000/erp-frontend:latest . && docker push 172.16.99.19:5000/erp-frontend:latest"
+# On prod:
+docker pull 172.16.99.19:5000/erp-frontend:latest
+cd /opt/erp/runtime && docker rm -f erp-app 2>/dev/null; docker compose up -d frontend
+```
+
+### NEXT_PUBLIC_API_BASE_URL — build-time trap
+
+`NEXT_PUBLIC_*` vars are inlined at build time, NOT runtime. The Dockerfile `ARG NEXT_PUBLIC_API_BASE_URL` must have a default (it does as of `3774a88`). If empty at build → compiled bundle falls back to `localhost:8082` → `ERR_CONNECTION_REFUSED` in browser.
+
+Verify after deploy:
+```bash
+docker exec erp-app sh -c 'grep -o "erpzk.sistematis.id/api/v1" /app/.next/static/chunks/*.js | head -1'
+```
