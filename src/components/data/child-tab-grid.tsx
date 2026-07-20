@@ -3,8 +3,7 @@
 
 import * as React from "react";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   getCoreRowModel,
@@ -14,7 +13,7 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Columns3, Plus, Trash2 } from "lucide-react";
+import { Columns3, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -29,6 +28,7 @@ import type { WindowField } from "@/lib/idempiere/types";
 
 import { buildColumns, TABLE_HIDDEN } from "./entity-columns";
 import { EntityTable } from "./entity-table";
+import { buildGridToolbar, EntityToolbar } from "./entity-toolbar";
 
 // ponytail: child tab grid — reuses the header table (buildColumns + EntityTable) for full UI parity:
 // sorting, pagination, column picker, bulk delete. Rows navigate to the child form page.
@@ -42,9 +42,10 @@ interface ChildTabGridProps {
 
 export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, fields }: ChildTabGridProps) {
   const pathname = usePathname();
+  const router = useRouter();
   // ponytail: child route = current page + tabSlug; rows append /{id}, Add appends /new
   const childBase = `${pathname}/${tabSlug}`;
-  const { data, isPending: loading } = useChildRecords(tableName, parentColumnName, parentId);
+  const { data, isPending: loading, refetch } = useChildRecords(tableName, parentColumnName, parentId);
   const rows = data?.rows ?? [];
   const truncated = data?.truncated ?? false;
   const deleteMut = useBulkDelete(tableName);
@@ -92,58 +93,81 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
     });
   }
 
-  if (loading) {
-    return <p className="text-muted-foreground text-sm">Loading...</p>;
+  // ponytail: CSV export — current page rows only
+  function handleExport() {
+    if (!rows.length) return;
+    const visibleCols = table.getVisibleLeafColumns().filter((c) => c.id !== "select");
+    const header = visibleCols.map((c) => c.id).join(",");
+    const body = rows
+      .map((r) =>
+        visibleCols
+          .map((c) => {
+            const val = r[c.id as keyof EntityRow];
+            const str =
+              typeof val === "object" && val !== null
+                ? ((val as { identifier?: string }).identifier ?? "")
+                : String(val ?? "");
+            return /["\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+          })
+          .join(","),
+      )
+      .join("\n");
+    const blob = new Blob([`${header}\n${body}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${tableName}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-2 text-muted-foreground text-sm">
+        <RefreshCw className="size-3.5 animate-spin" /> Loading...
+      </div>
+    );
+  }
+
+  // ponytail: build CRUD toolbar for child grid
+  const gridActions = buildGridToolbar({
+    selectedCount,
+    deleting: deleteMut.isPending,
+    basePath: childBase,
+    onAdd: () => router.push(`${childBase}/new`),
+    onRefresh: () => refetch(),
+    onExport: handleExport,
+    onDelete: () => setShowBulkDelete(true),
+  });
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {selectedCount > 0 && (
-            <>
-              <span className="text-muted-foreground text-sm tabular-nums">{selectedCount} selected</span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowBulkDelete(true)}
-                disabled={deleteMut.isPending}
-              >
-                <Trash2 className="size-4" />
-                {deleteMut.isPending ? "Deleting..." : `Delete Selected (${selectedCount})`}
-              </Button>
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Columns3 className="size-4" />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {table
-                .getAllColumns()
-                .filter((c) => !TABLE_HIDDEN.has(c.id))
-                .map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                  >
-                    {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" asChild>
-            <Link href={`${childBase}/new`}>
-              <Plus className="size-4" /> Add
-            </Link>
-          </Button>
-        </div>
+        <EntityToolbar actions={gridActions} />
+
+        {/* ponytail: Column picker — stays separate (not a CRUD action) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8">
+              <Columns3 className="size-4" />
+              <span className="hidden sm:inline">Columns</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table
+              .getAllColumns()
+              .filter((c) => !TABLE_HIDDEN.has(c.id))
+              .map((column) => (
+                <DropdownMenuCheckboxItem
+                  key={column.id}
+                  checked={column.getIsVisible()}
+                  onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                >
+                  {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
+                </DropdownMenuCheckboxItem>
+              ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {rows.length === 0 ? (

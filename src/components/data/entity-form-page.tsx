@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useQueries } from "@tanstack/react-query";
-import { ArrowLeft, MoreVertical, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -21,15 +21,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { getModel } from "@/lib/idempiere/client";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
@@ -48,6 +39,7 @@ import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import { useUnsavedGuard } from "@/lib/idempiere/use-unsaved-guard";
 
 import { EntityTabsView } from "./entity-tabs-view";
+import { buildFormToolbar, EntityToolbar } from "./entity-toolbar";
 
 interface EntityFormPageProps {
   windowSlug: string;
@@ -144,6 +136,7 @@ function EntityFormPageInner({
   // ponytail: Actions dialog state
   const [showDelete, setShowDelete] = React.useState(false);
   const [processResult, setProcessResult] = React.useState<{ summary: string; exportUri?: string } | null>(null);
+  const [copying, setCopying] = React.useState(false);
 
   const { data: tabsData } = useWindowTabsCached(windowSlug);
   const tabs = tabsData?.tabs ?? [];
@@ -184,6 +177,25 @@ function EntityFormPageInner({
       setIsDirty(false);
     }
   }, [entity]);
+
+  // ponytail: Copy prefill — load copied record data from sessionStorage on create mode
+  React.useEffect(() => {
+    if (!isEditMode) {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get("copy") === "1") {
+        try {
+          const raw = sessionStorage.getItem(`copy:${modelName}`);
+          if (raw) {
+            setFormData(JSON.parse(raw) as Record<string, unknown>);
+            setIsDirty(true);
+            sessionStorage.removeItem(`copy:${modelName}`);
+          }
+        } catch {
+          /* bad JSON — ignore */
+        }
+      }
+    }
+  }, [isEditMode, modelName]);
 
   function handleFieldChange(columnName: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [columnName]: value }));
@@ -253,6 +265,21 @@ function EntityFormPageInner({
     }
   }
 
+  // ponytail: Copy — duplicate current record data into a new form (navigate to /new)
+  function handleCopy() {
+    setCopying(true);
+    // ponytail: strip system fields, pass as URL-encoded JSON for the new page to prefill
+    const cleanData = normalizeRefs(stripSystemFields(formData));
+    sessionStorage.setItem(`copy:${modelName}`, JSON.stringify(cleanData));
+    router.push(`${basePath}/new?copy=1`);
+    setCopying(false);
+  }
+
+  // ponytail: Refresh — re-fetch the entity detail
+  function handleRefresh() {
+    router.refresh();
+  }
+
   // ponytail: error state — detail fetch failed, show retry instead of infinite skeleton
   if (isEditMode && isError) {
     return (
@@ -291,6 +318,22 @@ function EntityFormPageInner({
   }
 
   const entityName = isEditMode ? recordDisplayName(formData, currentTab?.parentColumnName) : "";
+
+  // ponytail: build CRUD toolbar actions
+  const toolbarActions = buildFormToolbar({
+    isEditMode,
+    isDirty,
+    locked,
+    saving: createMutation.isPending || updateMutation.isPending,
+    deleting: deleteMutation.isPending,
+    copying,
+    basePath,
+    onSave: handleSave,
+    onNew: () => router.push(`${basePath}/new`),
+    onRefresh: handleRefresh,
+    onCopy: handleCopy,
+    onDelete: () => setShowDelete(true),
+  });
 
   return (
     <ErrorBoundary>
@@ -345,52 +388,15 @@ function EntityFormPageInner({
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link href={parentRoute}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
-            </Button>
-            {!locked && (
-              <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending || !isDirty}>
-                {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            )}
-            {/* ponytail: Actions dropdown — Delete + process buttons (edit mode only) */}
-            {isEditMode && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label="Actions">
-                    <MoreVertical className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {processes.length > 0 && (
-                    <>
-                      <DropdownMenuLabel>Process</DropdownMenuLabel>
-                      {processes.map((proc) => (
-                        <DropdownMenuItem
-                          key={proc.slug}
-                          disabled={processMutation.isPending}
-                          onSelect={() => handleProcess(proc.slug)}
-                        >
-                          {proc.isReport && <Printer className="mr-2 size-4" />}
-                          {proc.label}
-                        </DropdownMenuItem>
-                      ))}
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={deleteMutation.isPending}
-                    onSelect={() => setShowDelete(true)}
-                  >
-                    <Trash2 className="mr-2 size-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          {/* ponytail: CRUD Toolbar — Save | New | Refresh | [⋮ Copy | Delete | Process] */}
+          <EntityToolbar
+            actions={toolbarActions}
+            processes={processes}
+            onProcess={handleProcess}
+            processLoading={processMutation.isPending}
+            processResult={processResult}
+            onProcessResultClose={() => setProcessResult(null)}
+          />
         </div>
         <EntityTabsView
           windowSlug={windowSlug}
@@ -432,28 +438,6 @@ function EntityFormPageInner({
         onConfirm={handleDelete}
         loading={deleteMutation.isPending}
       />
-
-      {/* ponytail: Process result dialog */}
-      <Dialog open={!!processResult} onOpenChange={(open) => !open && setProcessResult(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Process Result</DialogTitle>
-            {processResult?.exportUri && (
-              <DialogDescription>
-                <a
-                  href={processResult.exportUri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline"
-                >
-                  Download report
-                </a>
-              </DialogDescription>
-            )}
-          </DialogHeader>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap text-sm">{processResult?.summary}</pre>
-        </DialogContent>
-      </Dialog>
     </ErrorBoundary>
   );
 }
