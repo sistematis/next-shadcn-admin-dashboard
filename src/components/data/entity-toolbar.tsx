@@ -610,6 +610,7 @@ export function buildGridToolbar(
     onFind?: () => void;
     onDelete?: () => void;
     onToggle?: () => void;
+    onCustomize?: () => void;
   },
   state: { selectedCount?: number; deleting?: boolean } = {},
 ): ToolbarButtonDef[] {
@@ -662,6 +663,15 @@ export function buildGridToolbar(
     icon: TableProperties,
     shortcut: "Alt+T",
     onClick: handlers.onToggle,
+  });
+
+  // Customize → ShowMore (column visibility)
+  buttons.push({
+    componentName: "Customize",
+    label: "Customize",
+    icon: Settings2,
+    onClick: handlers.onCustomize,
+    showMore: true,
   });
 
   // Export → ShowMore

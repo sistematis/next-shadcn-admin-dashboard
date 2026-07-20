@@ -13,16 +13,12 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Columns3, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { type EntityRow, useBulkDelete, useChildRecords } from "@/lib/idempiere/entity-hooks";
 import type { WindowField } from "@/lib/idempiere/types";
 
@@ -55,6 +51,7 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
   const [showBulkDelete, setShowBulkDelete] = React.useState(false);
+  const [showCustomize, setShowCustomize] = React.useState(false);
 
   const columns = React.useMemo(
     () => buildColumns(fields, { rowHref: (r) => `${childBase}/${rowIdOf(r) ?? ""}` }),
@@ -136,6 +133,7 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
       onRefresh: () => refetch(),
       onExport: handleExport,
       onDelete: () => setShowBulkDelete(true),
+      onCustomize: () => setShowCustomize(true),
     },
     {
       selectedCount,
@@ -147,30 +145,6 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <EntityToolbar buttons={gridButtons} />
-
-        {/* ponytail: Column picker — stays separate (not a CRUD action) */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8">
-              <Columns3 className="size-4" />
-              <span className="hidden sm:inline">Columns</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {table
-              .getAllColumns()
-              .filter((c) => !TABLE_HIDDEN.has(c.id))
-              .map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column.id}
-                  checked={column.getIsVisible()}
-                  onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                >
-                  {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
-                </DropdownMenuCheckboxItem>
-              ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {rows.length === 0 ? (
@@ -192,6 +166,33 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
         onConfirm={confirmBulkDelete}
         loading={deleteMut.isPending}
       />
+
+      {/* ponytail: Customize dialog — column visibility (matches ZK Customize button) */}
+      <Dialog open={showCustomize} onOpenChange={setShowCustomize}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Customize View</DialogTitle>
+            <DialogDescription>Toggle column visibility</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {table
+              .getAllColumns()
+              .filter((c) => !TABLE_HIDDEN.has(c.id))
+              .map((column) => (
+                <div key={column.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`col-${column.id}`}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                  />
+                  <label htmlFor={`col-${column.id}`} className="text-sm">
+                    {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
+                  </label>
+                </div>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -15,7 +15,7 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { AlertCircle, Columns3, Download, Plus, RefreshCw, SearchX, Trash2 } from "lucide-react";
+import { AlertCircle, Download, Plus, RefreshCw, SearchX, Settings2, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -309,12 +310,12 @@ export function EntityList({
             </Select>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Columns3 className="size-4" />
-                  Columns
+                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Customize">
+                  <Settings2 className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
+                <DropdownMenuLabel>Customize View</DropdownMenuLabel>
                 {table
                   .getAllColumns()
                   .filter((c) => !TABLE_HIDDEN.has(c.id))
