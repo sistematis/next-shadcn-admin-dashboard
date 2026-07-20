@@ -2,7 +2,37 @@
 
 import * as React from "react";
 
-import { CheckCircle2, Copy, FileDown, MoreVertical, Plus, Printer, RefreshCw, Save, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  CheckCircle2,
+  Columns3,
+  Copy,
+  FileDown,
+  Files,
+  FileText,
+  FileUp,
+  HelpCircle,
+  Lock,
+  MessageSquare,
+  MoreVertical,
+  Package,
+  PanelLeft,
+  Plus,
+  Printer,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  Settings2,
+  Sparkles,
+  TableProperties,
+  Tag,
+  Trash2,
+  Undo2,
+  Workflow,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,25 +44,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ── Types ────────────────────────────────────────────────────
-
-export interface ToolbarAction {
-  /** Unique key */
-  key: string;
-  /** lucide icon */
-  icon: React.ComponentType<{ className?: string }>;
-  /** Tooltip / aria-label */
-  label: string;
-  /** Click handler */
-  onClick: () => void;
-  /** Disabled state */
-  disabled?: boolean;
-  /** Loading state (spinner replaces icon) */
-  loading?: boolean;
-  /** Variant — default | outline | destructive */
-  variant?: "default" | "outline" | "destructive";
-}
 
 export interface ToolbarProcess {
   slug: string;
@@ -40,16 +54,53 @@ export interface ToolbarProcess {
   isReport: boolean;
 }
 
-// ── Toolbar ──────────────────────────────────────────────────
+/**
+ * Each button definition — matches iDempiere ZK ADWindowToolbar button model.
+ * componentName = the ZK ComponentName from AD_ToolBarButton.
+ */
+export interface ToolbarButtonDef {
+  /** ZK ComponentName (e.g. "New", "Save", "Copy") */
+  componentName: string;
+  /** Display label (used in tooltip) */
+  label: string;
+  /** Icon component */
+  icon: React.ComponentType<{ className?: string }>;
+  /** Keyboard shortcut shown in tooltip */
+  shortcut?: string;
+  /** Click handler — if undefined, button is rendered as disabled stub */
+  onClick?: () => void;
+  /** Override disabled state */
+  disabled?: boolean;
+  /** Loading state */
+  loading?: boolean;
+  /** IsShowMore — goes to overflow ⋮ popup */
+  showMore?: boolean;
+  /** IsAddSeparator — renders vertical separator after this button */
+  addSeparator?: boolean;
+  /** IsAdvanced — hidden unless advanced mode */
+  advanced?: boolean;
+  /** Variant — destructive for delete */
+  variant?: "default" | "destructive";
+}
+
+// ── ZK Toolbar Button Order (from ADWindowToolbar.java init()) ──
+//
+// Standard (visible) buttons:
+//   Ignore, Help*, New, Copy, Delete, Save, SaveCreate*,
+//   Refresh, Find, Attachment, PostIt*, Chat*, Label,
+//   Toggle, ParentRecord, DetailRecord,
+//   Report, Archive*, Print, Lock*, ZoomAcross, ActiveWorkflows*, Requests*,
+//   ProductInfo, Customize*, Process, QuickForm*, AttributeForm*,
+//   Export*, FileImport*, CSVImport*, [ShowMore ⋮]
+//
+// * = IsShowMore (goes to overflow popup)
+// Separators: after Help, SaveCreate, Customize groups
+
+// ── Toolbar Component ─────────────────────────────────────────
 
 interface EntityToolbarProps {
-  /** Actions for primary buttons (left side) */
-  actions: ToolbarAction[];
-  /** Additional dropdown menu items (overflow + processes) */
-  menuItems?: {
-    label?: string;
-    items: ToolbarAction[];
-  }[];
+  /** Toolbar buttons — should follow ZK order */
+  buttons: ToolbarButtonDef[];
   /** Process definitions from useWindowProcesses */
   processes?: ToolbarProcess[];
   /** On process click */
@@ -62,101 +113,86 @@ interface EntityToolbarProps {
   onProcessResultClose?: () => void;
 }
 
-/**
- * Generic CRUD toolbar that appears on every tab and sub-tab.
- *
- * Renders primary action buttons (Save, New, Delete, etc.) plus an
- * Actions (⋮) overflow dropdown for processes and less-used actions.
- *
- * Mobile (< 768px): collapses all buttons into the dropdown except Save.
- */
 export function EntityToolbar({
-  actions,
-  menuItems = [],
+  buttons,
   processes = [],
   onProcess,
   processLoading,
   processResult,
   onProcessResultClose,
 }: EntityToolbarProps) {
-  // ponytail: CRUD buttons render directly as visible buttons.
-  // Only Process buttons go into the ⋮ dropdown (they're entity-specific and less frequent).
-  const hasMenu = processes.length > 0 || menuItems.length > 0;
+  // ponytail: split into visible buttons vs ShowMore overflow (matches ZK IsShowMore logic)
+  const visibleButtons = buttons.filter((b) => !b.showMore && !b.advanced);
+  const showMoreButtons = buttons.filter((b) => b.showMore && !b.advanced);
+  const hasShowMore = showMoreButtons.length > 0 || processes.length > 0;
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        {/* CRUD buttons — visible directly, not wrapped in dropdown */}
-        {actions.map((action) => (
-          <Button
-            key={action.key}
-            variant={action.variant ?? "outline"}
-            size="sm"
-            onClick={action.onClick}
-            disabled={action.disabled}
-            aria-label={action.label}
-            className="h-8"
-          >
-            {action.loading ? <RefreshCw className="size-4 animate-spin" /> : <action.icon className="size-4" />}
-            <span className="hidden sm:inline">{action.label}</span>
-          </Button>
-        ))}
+      <TooltipProvider delayDuration={300}>
+        <div className="flex items-center gap-0.5">
+          {/* Visible buttons — icon-only with tooltip, matching ZK toolbar */}
+          {visibleButtons.map((btn) => (
+            <React.Fragment key={btn.componentName}>
+              <ToolbarIconButton def={btn} />
+              {btn.addSeparator && <div className="bg-border mx-1 h-5 w-px shrink-0" />}
+            </React.Fragment>
+          ))}
 
-        {/* ⋮ Process dropdown — only shows if there are processes or custom menu items */}
-        {hasMenu && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Process">
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-48">
-              {/* Custom menu groups */}
-              {menuItems.map((group, gi) => (
-                <React.Fragment key={`menu-${gi}`}>
-                  {group.label && <DropdownMenuLabel>{group.label}</DropdownMenuLabel>}
-                  {group.items.map((item) => (
-                    <DropdownMenuItem
-                      key={item.key}
-                      disabled={item.disabled}
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        item.onClick();
-                      }}
-                      variant={item.variant === "destructive" ? "destructive" : "default"}
-                    >
-                      <item.icon className="mr-2 size-4" />
-                      {item.label}
-                    </DropdownMenuItem>
-                  ))}
-                  {gi < menuItems.length - 1 && <DropdownMenuSeparator />}
-                </React.Fragment>
-              ))}
+          {/* ShowMore ⋮ overflow — matches ZK btnShowMore */}
+          {hasShowMore && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Show More">
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52">
+                {/* ShowMore buttons */}
+                {showMoreButtons.map((btn) => (
+                  <DropdownMenuItem
+                    key={btn.componentName}
+                    disabled={btn.disabled || !btn.onClick}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      btn.onClick?.();
+                    }}
+                    variant={btn.variant === "destructive" ? "destructive" : "default"}
+                  >
+                    {btn.loading ? (
+                      <RefreshCw className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <btn.icon className="mr-2 size-4" />
+                    )}
+                    {btn.label}
+                    {btn.shortcut && <kbd className="text-muted-foreground ml-auto text-xs">{btn.shortcut}</kbd>}
+                  </DropdownMenuItem>
+                ))}
 
-              {/* Process buttons */}
-              {processes.length > 0 && (
-                <>
-                  {menuItems.length > 0 && <DropdownMenuSeparator />}
-                  <DropdownMenuLabel>Process</DropdownMenuLabel>
-                  {processes.map((proc) => (
-                    <DropdownMenuItem
-                      key={proc.slug}
-                      disabled={processLoading}
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        onProcess?.(proc.slug);
-                      }}
-                    >
-                      {proc.isReport ? <Printer className="mr-2 size-4" /> : <CheckCircle2 className="mr-2 size-4" />}
-                      {proc.label}
-                    </DropdownMenuItem>
-                  ))}
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+                {/* Process buttons */}
+                {processes.length > 0 && (
+                  <>
+                    {showMoreButtons.length > 0 && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel>Process</DropdownMenuLabel>
+                    {processes.map((proc) => (
+                      <DropdownMenuItem
+                        key={proc.slug}
+                        disabled={processLoading}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          onProcess?.(proc.slug);
+                        }}
+                      >
+                        {proc.isReport ? <Printer className="mr-2 size-4" /> : <CheckCircle2 className="mr-2 size-4" />}
+                        {proc.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </TooltipProvider>
 
       {/* ponytail: Process result dialog */}
       <Dialog open={!!processResult} onOpenChange={(open) => !open && onProcessResultClose?.()}>
@@ -183,144 +219,459 @@ export function EntityToolbar({
   );
 }
 
-// ── Toolbar Builders ─────────────────────────────────────────
+// ── Single Icon Button ───────────────────────────────────────
+
+function ToolbarIconButton({ def }: { def: ToolbarButtonDef }) {
+  const isDisabled = def.disabled ?? !def.onClick;
+  const tooltipText = def.shortcut ? `${def.label}    ${def.shortcut}` : def.label;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={def.onClick}
+          disabled={isDisabled}
+          aria-label={def.label}
+          data-variant={def.variant}
+        >
+          {def.loading ? <RefreshCw className="size-4 animate-spin" /> : <def.icon className="size-4" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">
+        {tooltipText}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ── Button Factory: matches ZK ADWindowToolbar init() order ──
+
+export interface ToolbarButtonHandlers {
+  onIgnore?: () => void;
+  onHelp?: () => void;
+  onNew?: () => void;
+  onCopy?: () => void;
+  onDelete?: () => void;
+  onSave?: () => void;
+  onSaveCreate?: () => void;
+  onRefresh?: () => void;
+  onFind?: () => void;
+  onAttachment?: () => void;
+  onPostIt?: () => void;
+  onChat?: () => void;
+  onLabel?: () => void;
+  onToggle?: () => void;
+  onParentRecord?: () => void;
+  onDetailRecord?: () => void;
+  onReport?: () => void;
+  onArchive?: () => void;
+  onPrint?: () => void;
+  onLock?: () => void;
+  onZoomAcross?: () => void;
+  onActiveWorkflows?: () => void;
+  onRequests?: () => void;
+  onProductInfo?: () => void;
+  onCustomize?: () => void;
+  onProcess?: () => void;
+  onQuickForm?: () => void;
+  onAttributeForm?: () => void;
+  onExport?: () => void;
+  onFileImport?: () => void;
+  onCSVImport?: () => void;
+}
+
+export interface ToolbarState {
+  saving?: boolean;
+  deleting?: boolean;
+  copying?: boolean;
+  loading?: boolean;
+  isDirty?: boolean;
+  isEditMode?: boolean;
+  isLocked?: boolean;
+  /** Disable buttons not applicable in current context */
+  hasSelection?: boolean;
+}
 
 /**
- * Build toolbar actions for a FORM (header tab detail/edit page).
- * Buttons: Save | New | Refresh | [⋮ Copy | Delete | Processes]
- *
- * NOTE: This is a plain function (not a React hook) — it returns a static
- * action array. Safe to call after early returns.
+ * Build the full ZK toolbar button array following ADWindowToolbar.init() order.
+ * Buttons without handlers are rendered as disabled stubs (greyed out, not removed).
  */
-export function buildFormToolbar(opts: {
-  isEditMode: boolean;
-  isDirty: boolean;
-  locked: boolean;
-  saving: boolean;
-  deleting: boolean;
-  copying: boolean;
-  basePath: string;
-  onSave: () => void;
-  onNew: () => void;
-  onRefresh: () => void;
-  onCopy: () => void;
-  onDelete: () => void;
-}): ToolbarAction[] {
-  const { isEditMode, isDirty, locked, saving, deleting, copying, onSave, onNew, onRefresh, onCopy, onDelete } = opts;
+export function buildZKToolbar(handlers: ToolbarButtonHandlers, state: ToolbarState = {}): ToolbarButtonDef[] {
+  const { saving, deleting, copying, isDirty, isEditMode } = state;
+  const buttons: ToolbarButtonDef[] = [];
 
-  const actions: ToolbarAction[] = [];
-
-  // Save — always visible, disabled when not dirty or locked
-  if (!locked) {
-    actions.push({
-      key: "save",
-      icon: Save,
-      label: "Save",
-      onClick: onSave,
-      disabled: saving || (isEditMode && !isDirty),
-      loading: saving,
-      variant: "default",
-    });
-  }
-
-  // New
-  actions.push({
-    key: "new",
-    icon: Plus,
-    label: "New",
-    onClick: onNew,
-    variant: "outline",
+  // 1. Ignore — revert unsaved changes
+  buttons.push({
+    componentName: "Ignore",
+    label: "Ignore",
+    icon: Undo2,
+    shortcut: "Alt+Z",
+    onClick: handlers.onIgnore,
+    disabled: !isDirty,
   });
 
-  // Refresh (edit mode only)
-  if (isEditMode) {
-    actions.push({
-      key: "refresh",
-      icon: RefreshCw,
-      label: "Refresh",
-      onClick: onRefresh,
-      variant: "outline",
-    });
-  }
+  // 2. Help → ShowMore, AddSeparator
+  buttons.push({
+    componentName: "Help",
+    label: "Help",
+    icon: HelpCircle,
+    shortcut: "Alt+H",
+    onClick: handlers.onHelp,
+    showMore: true,
+    addSeparator: true,
+  });
 
-  // Overflow: Copy (edit mode only)
+  // 3. New
+  buttons.push({
+    componentName: "New",
+    label: "New",
+    icon: Plus,
+    shortcut: "Alt+N",
+    onClick: handlers.onNew,
+  });
+
+  // 4. Copy (edit mode only)
   if (isEditMode) {
-    actions.push({
-      key: "copy",
-      icon: Copy,
+    buttons.push({
+      componentName: "Copy",
       label: "Copy",
-      onClick: onCopy,
-      disabled: copying,
+      icon: Copy,
+      shortcut: "Alt+C",
+      onClick: handlers.onCopy,
       loading: copying,
-      variant: "outline",
     });
   }
 
-  // Overflow: Delete (edit mode only)
+  // 5. Delete (edit mode only)
   if (isEditMode) {
-    actions.push({
-      key: "delete",
-      icon: Trash2,
+    buttons.push({
+      componentName: "Delete",
       label: "Delete",
-      onClick: onDelete,
-      disabled: deleting,
+      icon: Trash2,
+      shortcut: "Alt+D",
+      onClick: handlers.onDelete,
       loading: deleting,
       variant: "destructive",
     });
   }
 
-  return actions;
+  // 6. Save
+  buttons.push({
+    componentName: "Save",
+    label: "Save",
+    icon: Save,
+    shortcut: "Alt+S",
+    onClick: handlers.onSave,
+    loading: saving,
+    disabled: (saving ?? false) || !isDirty,
+  });
+
+  // 7. SaveCreate → ShowMore, AddSeparator
+  buttons.push({
+    componentName: "SaveCreate",
+    label: "Save & Create",
+    icon: Plus,
+    shortcut: "Alt+A",
+    onClick: handlers.onSaveCreate,
+    showMore: true,
+    addSeparator: true,
+    disabled: !isDirty,
+  });
+
+  // 8. Refresh
+  buttons.push({
+    componentName: "Refresh",
+    label: "Refresh",
+    icon: RefreshCw,
+    shortcut: "Alt+E",
+    onClick: handlers.onRefresh,
+  });
+
+  // 9. Find (advanced search)
+  buttons.push({
+    componentName: "Find",
+    label: "Find",
+    icon: Search,
+    shortcut: "Alt+F",
+    onClick: handlers.onFind,
+  });
+
+  // 10. Attachment
+  buttons.push({
+    componentName: "Attachment",
+    label: "Attachment",
+    icon: Files,
+    onClick: handlers.onAttachment,
+  });
+
+  // 11. PostIt → ShowMore
+  buttons.push({
+    componentName: "PostIt",
+    label: "Post It",
+    icon: FileText,
+    onClick: handlers.onPostIt,
+    showMore: true,
+  });
+
+  // 12. Chat → ShowMore
+  buttons.push({
+    componentName: "Chat",
+    label: "Chat",
+    icon: MessageSquare,
+    onClick: handlers.onChat,
+    showMore: true,
+  });
+
+  // 13. Label
+  buttons.push({
+    componentName: "Label",
+    label: "Label",
+    icon: Tag,
+    onClick: handlers.onLabel,
+  });
+
+  // 14. Toggle (Grid/Form)
+  buttons.push({
+    componentName: "Toggle",
+    label: "Toggle Grid",
+    icon: TableProperties,
+    shortcut: "Alt+T",
+    onClick: handlers.onToggle,
+  });
+
+  // 15. ParentRecord
+  buttons.push({
+    componentName: "ParentRecord",
+    label: "Parent Record",
+    icon: ArrowUp,
+    shortcut: "Alt+↑",
+    onClick: handlers.onParentRecord,
+  });
+
+  // 16. DetailRecord
+  buttons.push({
+    componentName: "DetailRecord",
+    label: "Detail Record",
+    icon: ArrowDown,
+    shortcut: "Alt+↓",
+    onClick: handlers.onDetailRecord,
+  });
+
+  // 17. Report (CanReport only)
+  buttons.push({
+    componentName: "Report",
+    label: "Report",
+    icon: FileText,
+    shortcut: "Alt+R",
+    onClick: handlers.onReport,
+  });
+
+  // 18. Archive → ShowMore
+  buttons.push({
+    componentName: "Archive",
+    label: "Archive",
+    icon: Archive,
+    onClick: handlers.onArchive,
+    showMore: true,
+  });
+
+  // 19. Print
+  buttons.push({
+    componentName: "Print",
+    label: "Print",
+    icon: Printer,
+    shortcut: "Alt+P",
+    onClick: handlers.onPrint,
+  });
+
+  // 20. Lock → ShowMore (Personal Lock)
+  buttons.push({
+    componentName: "Lock",
+    label: "Personal Lock",
+    icon: Lock,
+    onClick: handlers.onLock,
+    showMore: true,
+  });
+
+  // 21. ZoomAcross
+  buttons.push({
+    componentName: "ZoomAcross",
+    label: "Zoom Across",
+    icon: PanelLeft,
+    onClick: handlers.onZoomAcross,
+  });
+
+  // 22. ActiveWorkflows → ShowMore
+  buttons.push({
+    componentName: "ActiveWorkflows",
+    label: "Active Workflows",
+    icon: Workflow,
+    onClick: handlers.onActiveWorkflows,
+    showMore: true,
+  });
+
+  // 23. Requests → ShowMore
+  buttons.push({
+    componentName: "Requests",
+    label: "Requests",
+    icon: MessageSquare,
+    onClick: handlers.onRequests,
+    showMore: true,
+  });
+
+  // 24. ProductInfo
+  buttons.push({
+    componentName: "ProductInfo",
+    label: "Product Info",
+    icon: Package,
+    onClick: handlers.onProductInfo,
+  });
+
+  // 25. Customize → ShowMore, AddSeparator
+  buttons.push({
+    componentName: "Customize",
+    label: "Customize",
+    icon: Settings2,
+    onClick: handlers.onCustomize,
+    showMore: true,
+    addSeparator: true,
+  });
+
+  // 26. Process
+  buttons.push({
+    componentName: "Process",
+    label: "Process",
+    icon: Sparkles,
+    shortcut: "Alt+O",
+    onClick: handlers.onProcess,
+  });
+
+  // 27. QuickForm → ShowMore, AddSeparator
+  buttons.push({
+    componentName: "QuickForm",
+    label: "Quick Form",
+    icon: TableProperties,
+    onClick: handlers.onQuickForm,
+    showMore: true,
+    addSeparator: true,
+  });
+
+  // 28. AttributeForm → ShowMore
+  buttons.push({
+    componentName: "AttributeForm",
+    label: "Attribute Form",
+    icon: Settings2,
+    onClick: handlers.onAttributeForm,
+    showMore: true,
+  });
+
+  // 29. Export → Advanced, ShowMore
+  buttons.push({
+    componentName: "Export",
+    label: "Export",
+    icon: FileDown,
+    onClick: handlers.onExport,
+    showMore: true,
+    advanced: true,
+  });
+
+  // 30. FileImport → Advanced, ShowMore
+  buttons.push({
+    componentName: "FileImport",
+    label: "File Import",
+    icon: FileUp,
+    onClick: handlers.onFileImport,
+    showMore: true,
+    advanced: true,
+  });
+
+  // 31. CSVImport → ShowMore
+  buttons.push({
+    componentName: "CSVImport",
+    label: "CSV Import",
+    icon: FileUp,
+    onClick: handlers.onCSVImport,
+    showMore: true,
+  });
+
+  return buttons;
 }
 
-/**
- * Build toolbar actions for a GRID/CHILD TAB.
- * Buttons: Add | Refresh | Export | [⋮ Delete Selected | Copy]
- */
-export function buildGridToolbar(opts: {
-  selectedCount: number;
-  deleting: boolean;
-  basePath: string;
-  onAdd: () => void;
-  onRefresh: () => void;
-  onExport: () => void;
-  onDelete: () => void;
-}): ToolbarAction[] {
-  const actions: ToolbarAction[] = [];
+// ── Grid/Child Tab Toolbar (simplified subset) ───────────────
 
-  actions.push({
-    key: "add",
+export function buildGridToolbar(
+  handlers: {
+    onAdd?: () => void;
+    onRefresh?: () => void;
+    onExport?: () => void;
+    onFind?: () => void;
+    onDelete?: () => void;
+    onToggle?: () => void;
+  },
+  state: { selectedCount?: number; deleting?: boolean } = {},
+): ToolbarButtonDef[] {
+  const buttons: ToolbarButtonDef[] = [];
+
+  // New
+  buttons.push({
+    componentName: "New",
+    label: "New",
     icon: Plus,
-    label: "Add",
-    onClick: opts.onAdd,
-    variant: "default",
+    shortcut: "Alt+N",
+    onClick: handlers.onAdd,
   });
 
-  actions.push({
-    key: "refresh",
-    icon: RefreshCw,
-    label: "Refresh",
-    onClick: opts.onRefresh,
-    variant: "outline",
-  });
-
-  actions.push({
-    key: "export",
-    icon: FileDown,
-    label: "Export",
-    onClick: opts.onExport,
-    variant: "outline",
-  });
-
-  // Overflow
-  actions.push({
-    key: "delete-selected",
+  // Delete Selected
+  buttons.push({
+    componentName: "Delete",
+    label: `Delete${state.selectedCount ? ` (${state.selectedCount})` : ""}`,
     icon: Trash2,
-    label: `Delete Selected${opts.selectedCount > 0 ? ` (${opts.selectedCount})` : ""}`,
-    onClick: opts.onDelete,
-    disabled: opts.selectedCount === 0 || opts.deleting,
-    loading: opts.deleting,
+    shortcut: "Alt+D",
+    onClick: handlers.onDelete,
+    disabled: !state.selectedCount || state.deleting,
+    loading: state.deleting,
     variant: "destructive",
+    addSeparator: true,
   });
 
-  return actions;
+  // Refresh
+  buttons.push({
+    componentName: "Refresh",
+    label: "Refresh",
+    icon: RefreshCw,
+    shortcut: "Alt+E",
+    onClick: handlers.onRefresh,
+  });
+
+  // Find
+  buttons.push({
+    componentName: "Find",
+    label: "Find",
+    icon: Search,
+    shortcut: "Alt+F",
+    onClick: handlers.onFind,
+  });
+
+  // Toggle Grid
+  buttons.push({
+    componentName: "Toggle",
+    label: "Toggle Grid",
+    icon: TableProperties,
+    shortcut: "Alt+T",
+    onClick: handlers.onToggle,
+  });
+
+  // Export → ShowMore
+  buttons.push({
+    componentName: "Export",
+    label: "Export",
+    icon: FileDown,
+    onClick: handlers.onExport,
+    showMore: true,
+  });
+
+  return buttons;
 }

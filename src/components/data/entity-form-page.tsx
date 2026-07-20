@@ -39,7 +39,7 @@ import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import { useUnsavedGuard } from "@/lib/idempiere/use-unsaved-guard";
 
 import { EntityTabsView } from "./entity-tabs-view";
-import { buildFormToolbar, EntityToolbar } from "./entity-toolbar";
+import { buildZKToolbar, EntityToolbar } from "./entity-toolbar";
 
 interface EntityFormPageProps {
   windowSlug: string;
@@ -319,26 +319,28 @@ function EntityFormPageInner({
 
   const entityName = isEditMode ? recordDisplayName(formData, currentTab?.parentColumnName) : "";
 
-  // ponytail: build CRUD toolbar actions
-  const toolbarActions = buildFormToolbar({
-    isEditMode,
-    isDirty,
-    locked,
-    saving: createMutation.isPending || updateMutation.isPending,
-    deleting: deleteMutation.isPending,
-    copying,
-    basePath,
-    onSave: handleSave,
-    onNew: () => router.push(`${basePath}/new`),
-    onRefresh: handleRefresh,
-    onCopy: handleCopy,
-    onDelete: () => setShowDelete(true),
-  });
+  // ponytail: build ZK-matching toolbar
+  const toolbarButtons = buildZKToolbar(
+    {
+      onSave: handleSave,
+      onNew: () => router.push(`${basePath}/new`),
+      onCopy: handleCopy,
+      onDelete: () => setShowDelete(true),
+      onRefresh: handleRefresh,
+    },
+    {
+      saving: createMutation.isPending || updateMutation.isPending,
+      deleting: deleteMutation.isPending,
+      copying,
+      isDirty,
+      isEditMode,
+    },
+  );
 
   return (
     <ErrorBoundary>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
               <Link href={parentRoute}>
@@ -388,20 +390,15 @@ function EntityFormPageInner({
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          {/* ponytail: Cancel/Back navigation + Actions (⋮) dropdown */}
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" asChild className="h-8">
-              <Link href={parentRoute}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
-            </Button>
-            <EntityToolbar
-              actions={toolbarActions}
-              processes={processes}
-              onProcess={handleProcess}
-              processLoading={processMutation.isPending}
-              processResult={processResult}
-              onProcessResultClose={() => setProcessResult(null)}
-            />
-          </div>
+          {/* ponytail: ZK-matching toolbar — icon-only with separator groups + ShowMore overflow */}
+          <EntityToolbar
+            buttons={toolbarButtons}
+            processes={processes}
+            onProcess={handleProcess}
+            processLoading={processMutation.isPending}
+            processResult={processResult}
+            onProcessResultClose={() => setProcessResult(null)}
+          />
         </div>
         <EntityTabsView
           windowSlug={windowSlug}

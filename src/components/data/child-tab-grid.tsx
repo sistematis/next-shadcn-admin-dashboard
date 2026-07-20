@@ -129,21 +129,24 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
     );
   }
 
-  // ponytail: build CRUD toolbar for child grid
-  const gridActions = buildGridToolbar({
-    selectedCount,
-    deleting: deleteMut.isPending,
-    basePath: childBase,
-    onAdd: () => router.push(`${childBase}/new`),
-    onRefresh: () => refetch(),
-    onExport: handleExport,
-    onDelete: () => setShowBulkDelete(true),
-  });
+  // ponytail: build ZK-matching grid toolbar
+  const gridButtons = buildGridToolbar(
+    {
+      onAdd: () => router.push(`${childBase}/new`),
+      onRefresh: () => refetch(),
+      onExport: handleExport,
+      onDelete: () => setShowBulkDelete(true),
+    },
+    {
+      selectedCount,
+      deleting: deleteMut.isPending,
+    },
+  );
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <EntityToolbar actions={gridActions} />
+        <EntityToolbar buttons={gridButtons} />
 
         {/* ponytail: Column picker — stays separate (not a CRUD action) */}
         <DropdownMenu>
