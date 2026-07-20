@@ -7,7 +7,6 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
-  Columns3,
   Copy,
   FileDown,
   Files,
@@ -22,7 +21,6 @@ import {
   Plus,
   Printer,
   RefreshCw,
-  RotateCcw,
   Save,
   Search,
   Settings2,
@@ -134,7 +132,7 @@ export function EntityToolbar({
           {visibleButtons.map((btn) => (
             <React.Fragment key={btn.componentName}>
               <ToolbarIconButton def={btn} />
-              {btn.addSeparator && <div className="bg-border mx-1 h-5 w-px shrink-0" />}
+              {btn.addSeparator && <div className="mx-1 h-5 w-px shrink-0 bg-border" />}
             </React.Fragment>
           ))}
 
@@ -164,7 +162,7 @@ export function EntityToolbar({
                       <btn.icon className="mr-2 size-4" />
                     )}
                     {btn.label}
-                    {btn.shortcut && <kbd className="text-muted-foreground ml-auto text-xs">{btn.shortcut}</kbd>}
+                    {btn.shortcut && <kbd className="ml-auto text-xs text-muted-foreground">{btn.shortcut}</kbd>}
                   </DropdownMenuItem>
                 ))}
 
@@ -598,6 +596,69 @@ export function buildZKToolbar(handlers: ToolbarButtonHandlers, state: ToolbarSt
   });
 
   return buttons;
+}
+
+// ── Keyboard Shortcut Hook ──────────────────────────────────
+
+/**
+ * Maps ZK keyboard shortcuts to their handler names.
+ * From ADWindowToolbar.configureKeyMap().
+ */
+export const TOOLBAR_SHORTCUTS: Record<string, keyof ToolbarButtonHandlers> = {
+  AltN: "onNew",
+  AltS: "onSave",
+  AltD: "onDelete",
+  AltC: "onCopy",
+  AltE: "onRefresh",
+  AltZ: "onIgnore",
+  AltH: "onHelp",
+  AltR: "onReport",
+  AltP: "onPrint",
+  AltA: "onSaveCreate",
+  AltT: "onToggle",
+  AltO: "onProcess",
+  AltF: "onFind",
+};
+
+/**
+ * Register global keyboard shortcut listener for toolbar actions.
+ * Matches ADWindowToolbar.configureKeyMap() — Alt+key triggers the action.
+ *
+ * Ignores key events when:
+ * - target is an input/textarea/select (typing)
+ * - modifier keys other than Alt are pressed
+ * - handler is not defined
+ *
+ * @example
+ * const { onNew, onSave, onIgnore } = handlers;
+ * useToolbarShortcuts({ onNew, onSave, onIgnore });
+ */
+export function useToolbarShortcuts(handlers: ToolbarButtonHandlers) {
+  React.useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // Only Alt shortcuts (no Ctrl/Shift/Meta)
+      if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey) return;
+
+      // Skip if typing in a form field — let the field handle it
+      const target = e.target as HTMLElement;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (target.isContentEditable) return;
+
+      const key = `Alt${e.key.toUpperCase()}`;
+      const handlerName = TOOLBAR_SHORTCUTS[key];
+      if (!handlerName) return;
+
+      const handler = handlers[handlerName];
+      if (handler) {
+        e.preventDefault();
+        handler();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handlers]);
 }
 
 // ── Grid/Child Tab Toolbar (simplified subset) ───────────────

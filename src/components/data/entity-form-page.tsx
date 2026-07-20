@@ -39,7 +39,7 @@ import { getTokenFromStorage } from "@/lib/idempiere/token-utils";
 import { useUnsavedGuard } from "@/lib/idempiere/use-unsaved-guard";
 
 import { EntityTabsView } from "./entity-tabs-view";
-import { buildZKToolbar, EntityToolbar } from "./entity-toolbar";
+import { buildZKToolbar, EntityToolbar, type ToolbarButtonHandlers, useToolbarShortcuts } from "./entity-toolbar";
 
 interface EntityFormPageProps {
   windowSlug: string;
@@ -55,17 +55,15 @@ interface EntityFormPageProps {
 function formatWIB(val: unknown): string {
   const d = new Date(val as string);
   if (Number.isNaN(d.getTime())) return String(val ?? "-");
-  return (
-    new Intl.DateTimeFormat("id-ID", {
-      timeZone: "Asia/Jakarta",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(d) + " WIB"
-  );
+  return `${new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)} WIB`;
 }
 
 // ponytail: FK refs come as {id, identifier} — extract identifier for display
@@ -280,6 +278,50 @@ function EntityFormPageInner({
     router.refresh();
   }
 
+  // ponytail: Ignore — revert unsaved form changes back to original entity data
+  function handleIgnore() {
+    if (entity) {
+      setFormData(entity);
+      setIsDirty(false);
+    }
+  }
+
+  // ponytail: SaveCreate — save current record then immediately navigate to /new
+  async function handleSaveCreate() {
+    await handleSave();
+    router.push(`${basePath}/new`);
+  }
+
+  // ponytail: Find — navigate to list page with search focus
+  function handleFind() {
+    router.push(`${basePath}?focus=search`);
+  }
+
+  // ponytail: Toggle — switch between form and grid view (navigate to list)
+  function handleToggle() {
+    router.push(basePath);
+  }
+
+  // ponytail: Help — open help dialog (stub: toast for now, future = AD_Window Help)
+  function handleHelp() {
+    toast.info(`Help for ${title}`, { description: "Context help will be available here." });
+  }
+
+  // ponytail: global keyboard shortcuts (Alt+N, Alt+S, Alt+Z, etc.) — matches ZK configureKeyMap.
+  // Must be called before early returns (rules of hooks).
+  useToolbarShortcuts({
+    onSave: handleSave,
+    onSaveCreate: handleSaveCreate,
+    onNew: () => router.push(`${basePath}/new`),
+    onCopy: handleCopy,
+    onDelete: () => setShowDelete(true),
+    onRefresh: handleRefresh,
+    onIgnore: handleIgnore,
+    onFind: handleFind,
+    onToggle: handleToggle,
+    onHelp: handleHelp,
+  });
+
   // ponytail: error state — detail fetch failed, show retry instead of infinite skeleton
   if (isEditMode && isError) {
     return (
@@ -320,22 +362,25 @@ function EntityFormPageInner({
   const entityName = isEditMode ? recordDisplayName(formData, currentTab?.parentColumnName) : "";
 
   // ponytail: build ZK-matching toolbar
-  const toolbarButtons = buildZKToolbar(
-    {
-      onSave: handleSave,
-      onNew: () => router.push(`${basePath}/new`),
-      onCopy: handleCopy,
-      onDelete: () => setShowDelete(true),
-      onRefresh: handleRefresh,
-    },
-    {
-      saving: createMutation.isPending || updateMutation.isPending,
-      deleting: deleteMutation.isPending,
-      copying,
-      isDirty,
-      isEditMode,
-    },
-  );
+  const toolbarHandlers: ToolbarButtonHandlers = {
+    onSave: handleSave,
+    onSaveCreate: handleSaveCreate,
+    onNew: () => router.push(`${basePath}/new`),
+    onCopy: handleCopy,
+    onDelete: () => setShowDelete(true),
+    onRefresh: handleRefresh,
+    onIgnore: handleIgnore,
+    onFind: handleFind,
+    onToggle: handleToggle,
+    onHelp: handleHelp,
+  };
+  const toolbarButtons = buildZKToolbar(toolbarHandlers, {
+    saving: createMutation.isPending || updateMutation.isPending,
+    deleting: deleteMutation.isPending,
+    copying,
+    isDirty,
+    isEditMode,
+  });
 
   return (
     <ErrorBoundary>

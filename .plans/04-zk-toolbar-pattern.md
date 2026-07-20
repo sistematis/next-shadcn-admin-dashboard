@@ -2,7 +2,7 @@
 
 **Source:** ADWindowToolbar.java (org.adempiere.ui.zk)
 **Goal:** Toolbar frontend 100% match iDempiere ZK webui — button order, icon-only, shortcuts, separators, ShowMore overflow.
-**Status:** ✅ Implemented (commit 43477fd). This plan documents the spec for replication across all future menus.
+**Status:** ✅ Core toolbar + keyboard shortcuts + Ignore/SaveCreate/Find/Toggle/Help handlers implemented. Remaining: Report/Print, Attachment, ParentRecord/DetailRecord, ZoomAcross (backend-dependent).
 
 ## Architecture
 
@@ -136,14 +136,15 @@ From AD_Window_Process (window-specific) or AD_Table_Process (table-specific):
 
 ## Remaining Work (for next session)
 
-- [ ] Wire up Ignore handler (revert unsaved form changes)
-- [ ] Wire up Find (advanced search modal)
-- [ ] Wire up Toggle (grid ↔ form view switching)
+- [x] Wire up Ignore handler (revert unsaved form changes)
+- [ ] Wire up Find (advanced search modal — currently navigates to list with `?focus=search`)
+- [x] Wire up Toggle (grid ↔ form view switching — navigates to list page)
 - [ ] Wire up Report / Print (iDempiere report engine integration)
 - [ ] Wire up Attachment (AD_Attachment endpoint)
 - [ ] Wire up ParentRecord / DetailRecord (tab navigation)
 - [ ] Wire up ZoomAcross (cross-window drill)
-- [ ] Keyboard shortcut listener (global Alt+key handler)
+- [x] Keyboard shortcut listener (global Alt+key handler) — `useToolbarShortcuts` hook
 - [ ] Column visibility persistence for child-tab-grid (currently per-session only)
 - [ ] Customize drag-reorder (currently checkbox-only, ZK has drag-drop)
 - [ ] Process button metadata from AD_Window_Process API (currently hardcoded in process-config.ts)
+- [x] Wire up SaveCreate (save + navigate to /new)
