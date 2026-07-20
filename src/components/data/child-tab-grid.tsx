@@ -1,4 +1,5 @@
 "use client";
+"use no memo";
 
 import * as React from "react";
 
@@ -132,7 +133,7 @@ export function ChildTabGrid({ tableName, parentColumnName, parentId, tabSlug, f
                     checked={column.getIsVisible()}
                     onCheckedChange={(value) => column.toggleVisibility(!!value)}
                   >
-                    {column.id}
+                    {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
                   </DropdownMenuCheckboxItem>
                 ))}
             </DropdownMenuContent>

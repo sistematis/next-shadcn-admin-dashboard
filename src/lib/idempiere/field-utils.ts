@@ -91,13 +91,14 @@ export function isListField(f: WindowField): boolean {
 }
 
 // ── System column filtering ─────────────────────────────────
-// Union of all system/audit columns excluded from both table picker and form editor
-export const SYSTEM_COLUMNS = new Set([
+// Union of all system/audit columns excluded from both table picker and form editor.
+// Entity-specific PKs (e.g. C_BPartner_ID, M_Product_ID) are NOT hardcoded here —
+// they are always IsDisplayedGrid=false / IsDisplayed=false in AD_Field metadata.
+// The generic _UU suffix check below catches all UUID columns (C_BPartner_UU, M_Product_UU, etc.).
+const SYSTEM_COLUMNS = new Set([
   "id",
   "uid",
   "model-name",
-  "C_BPartner_UU",
-  "C_BPartner_ID",
   "AD_Client_ID",
   "AD_Org_ID",
   "Created",

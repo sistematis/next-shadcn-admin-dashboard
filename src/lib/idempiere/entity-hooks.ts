@@ -17,8 +17,10 @@ import {
   getWindowFieldLayout,
   getWindowFields,
   getWindowTabs,
+  runProcess,
   updateModel,
 } from "./client";
+import { getProcessesForWindow } from "./process-config";
 import { getTokenFromStorage } from "./token-utils";
 import type { WindowField, WindowTab } from "./types";
 
@@ -30,6 +32,7 @@ export interface EntityQueryParams {
   page: number; // 0-indexed
   pageSize: number;
   search?: string; // server-side search
+  searchFields?: string[]; // columns to search in (default: Name + Value)
   filter?: string; // extra $filter expressions
   orderBy?: string;
 }
@@ -141,9 +144,11 @@ export function useEntityList(modelName: string, params: EntityQueryParams) {
       // ponytail: build server-side filter — search + extra filters
       const filters: string[] = [];
       if (params.search) {
-        // ponytail: substringof is the OData function for LIKE
+        // ponytail: substringof is the OData function for LIKE — use searchFields prop for columns
         const s = params.search.replace(/'/g, "''");
-        filters.push(`(substringof('${s}',Name) or substringof('${s}',Value))`);
+        const fields = params.searchFields ?? ["Name", "Value"];
+        const searchFilter = fields.map((f) => `substringof('${s}',${f})`).join(" or ");
+        filters.push(`(${searchFilter})`);
       }
       if (params.filter) filters.push(params.filter);
 
@@ -161,6 +166,7 @@ export function useEntityList(modelName: string, params: EntityQueryParams) {
     },
     enabled: !!modelName,
     placeholderData: (prev) => prev, // ponytail: keep old data while fetching next page
+    staleTime: 10_000, // ponytail: 10s — prevent refetch thrash on rapid navigation
   });
 }
 
@@ -176,6 +182,7 @@ export function useEntityDetail(modelName: string, id: number | string | null) {
       return getModel<EntityRow>(modelName, id, token);
     },
     enabled: id !== null,
+    staleTime: 10_000, // ponytail: 10s — prevent refetch thrash on rapid navigation
   });
 }
 
@@ -313,5 +320,73 @@ export function useChildRecords(tableName: string, parentColumnName: string, par
     },
     enabled: !!tableName && !!parentId,
     staleTime: 30_000, // ponytail: 30sec — child data changes rarely
+  });
+}
+
+// ── Window Processes (Actions dropdown) ─────────────────────────
+
+export interface WindowProcess {
+  slug: string;
+  name: string;
+  label: string;
+  isReport: boolean;
+}
+
+/**
+ * Fetch process metadata for a window's configured processes.
+ * Uses GET /processes/{slug} per configured slug — cached 5min.
+ * Returns display-ready process info (label, isReport) for the Actions dropdown.
+ */
+export function useWindowProcesses(windowSlug: string) {
+  const configs = getProcessesForWindow(windowSlug);
+  const results = useQueries({
+    queries: configs.map((c) => ({
+      queryKey: ["process", c.slug] as const,
+      queryFn: async (): Promise<WindowProcess> => {
+        const token = getTokenFromStorage();
+        if (!token) throw new Error("Not authenticated");
+        const resp = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8082/api/v1"}/processes/${c.slug}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!resp.ok) throw new Error(`Process ${c.slug} not found`);
+        const data = await resp.json();
+        return {
+          slug: c.slug,
+          name: data.Name ?? c.label ?? c.slug,
+          label: c.label ?? data.Name ?? c.slug,
+          isReport: data.IsReport === true,
+        };
+      },
+      enabled: configs.length > 0,
+      staleTime: 5 * 60 * 1000, // 5min — process definitions change rarely
+    })),
+  });
+  return results.filter((r) => r.data).map((r) => r.data!) as WindowProcess[];
+}
+
+/**
+ * Run a process via POST /processes/{slug}.
+ * Shows toast on success/error. Returns full response for dialog rendering.
+ */
+export function useRunProcess() {
+  return useMutation({
+    mutationFn: async ({
+      slug,
+      recordId,
+      modelName,
+    }: {
+      slug: string;
+      recordId: number | string;
+      modelName: string;
+    }) => {
+      const token = getTokenFromStorage();
+      if (!token) throw new Error("Not authenticated");
+      return runProcess<{
+        summary?: string;
+        exportUri?: string;
+      }>(slug, { "record-id": recordId, "model-name": modelName }, token);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Process failed"),
   });
 }

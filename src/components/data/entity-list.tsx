@@ -1,4 +1,5 @@
 "use client";
+"use no memo";
 
 import * as React from "react";
 
@@ -94,6 +95,7 @@ export function EntityList({
     page: pagination.pageIndex,
     pageSize: pagination.pageSize,
     search: debouncedSearch || undefined,
+    searchFields,
     orderBy: sorting[0] ? `${sorting[0].id} ${sorting[0].desc ? "desc" : "asc"}` : undefined,
     filter:
       statusFilter === "Active"

@@ -1,4 +1,5 @@
 "use client";
+"use no memo";
 
 import { HelpCircle } from "lucide-react";
 
@@ -16,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { evaluateDisplayLogic } from "@/lib/idempiere/display-logic";
 import { useFKOptions, useListOptions, useTabFieldsForTabs, useWindowTabsCached } from "@/lib/idempiere/entity-hooks";
 import {
+  AD_REF,
   deriveTable,
   isBooleanField,
   isDateField,
@@ -259,13 +261,14 @@ export function FieldInput({
   }
 
   if (isDateField(field)) {
-    const dateVal = toDateInputValue(value);
+    const isDateTime = field.referenceType === AD_REF.DATE_TIME;
+    const dateVal = isDateTime ? toDateTimeInputValue(value) : toDateInputValue(value);
     return (
       <div className="flex flex-col gap-1.5">
         <FieldLabel htmlFor={key} label={label} isMandatory={field.isMandatory} help={Help} />
         <Input
           id={key}
-          type="date"
+          type={isDateTime ? "datetime-local" : "date"}
           value={dateVal}
           onChange={(e) => onChange(e.target.value)}
           disabled={readOnly}
@@ -314,6 +317,21 @@ function toDateInputValue(val: unknown): string {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return "";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ponytail: format a value for <input type="datetime-local"> — preserves time component for reference 16 (DateTime).
+function toDateTimeInputValue(val: unknown): string {
+  if (!val) return "";
+  const s = String(val);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return s.slice(0, 16);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
 // ponytail: FK lookup — searchable combobox with TanStack Query cache (shared across all FKSelect for same model)

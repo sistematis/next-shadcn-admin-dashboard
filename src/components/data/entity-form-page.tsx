@@ -1,4 +1,5 @@
 "use client";
+"use no memo";
 
 import * as React from "react";
 
@@ -6,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useQueries } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MoreVertical, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -19,14 +20,27 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { getModel } from "@/lib/idempiere/client";
 import type { EntityRow } from "@/lib/idempiere/entity-hooks";
 import {
   useCreateEntity,
+  useDeleteEntity,
   useEntityDetail,
+  useRunProcess,
   useTabFields,
   useUpdateEntity,
+  useWindowProcesses,
   useWindowTabsCached,
 } from "@/lib/idempiere/entity-hooks";
 import { normalizeRefs, stripSystemFields, validateMandatory } from "@/lib/idempiere/field-utils";
@@ -120,9 +134,16 @@ function EntityFormPageInner({
   const [isDirty, setIsDirty] = React.useState(false);
   useUnsavedGuard(isDirty);
 
-  const { data: entity, isPending } = useEntityDetail(modelName, isEditMode ? entityId : null);
+  const { data: entity, isPending, isError } = useEntityDetail(modelName, isEditMode ? entityId : null);
   const createMutation = useCreateEntity(modelName);
   const updateMutation = useUpdateEntity(modelName);
+  const deleteMutation = useDeleteEntity(modelName);
+  const processMutation = useRunProcess();
+  const processes = useWindowProcesses(windowSlug);
+
+  // ponytail: Actions dialog state
+  const [showDelete, setShowDelete] = React.useState(false);
+  const [processResult, setProcessResult] = React.useState<{ summary: string; exportUri?: string } | null>(null);
 
   const { data: tabsData } = useWindowTabsCached(windowSlug);
   const tabs = tabsData?.tabs ?? [];
@@ -201,6 +222,47 @@ function EntityFormPageInner({
     } catch {
       // ponytail: hook already toasts on error — swallow here
     }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteMutation.mutateAsync(entityId!);
+      router.push(parentRoute);
+    } catch {
+      // ponytail: hook already toasts on error
+    }
+  }
+
+  async function handleProcess(slug: string) {
+    try {
+      const result = await processMutation.mutateAsync({
+        slug,
+        recordId: entityId!,
+        modelName,
+      });
+      if (result?.summary || result?.exportUri) {
+        setProcessResult({
+          summary: result.summary ?? "Process completed.",
+          exportUri: result.exportUri,
+        });
+      } else {
+        toast.success("Process completed");
+      }
+    } catch {
+      // ponytail: hook already toasts on error
+    }
+  }
+
+  // ponytail: error state — detail fetch failed, show retry instead of infinite skeleton
+  if (isEditMode && isError) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-20">
+        <p className="text-muted-foreground text-sm">Failed to load record.</p>
+        <Button variant="outline" size="sm" onClick={() => router.refresh()}>
+          Retry
+        </Button>
+      </div>
+    );
   }
 
   if (isEditMode && isPending) {
@@ -292,6 +354,42 @@ function EntityFormPageInner({
                 {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save"}
               </Button>
             )}
+            {/* ponytail: Actions dropdown — Delete + process buttons (edit mode only) */}
+            {isEditMode && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="Actions">
+                    <MoreVertical className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {processes.length > 0 && (
+                    <>
+                      <DropdownMenuLabel>Process</DropdownMenuLabel>
+                      {processes.map((proc) => (
+                        <DropdownMenuItem
+                          key={proc.slug}
+                          disabled={processMutation.isPending}
+                          onSelect={() => handleProcess(proc.slug)}
+                        >
+                          {proc.isReport && <Printer className="mr-2 size-4" />}
+                          {proc.label}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={deleteMutation.isPending}
+                    onSelect={() => setShowDelete(true)}
+                  >
+                    <Trash2 className="mr-2 size-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
         <EntityTabsView
@@ -322,6 +420,40 @@ function EntityFormPageInner({
           </Collapsible>
         )}
       </div>
+
+      {/* ponytail: Delete confirmation */}
+      <ConfirmDialog
+        open={showDelete}
+        onOpenChange={setShowDelete}
+        title={`Delete ${entityName || "record"}?`}
+        description="This action cannot be undone. The record will be permanently deleted."
+        confirmText="Delete"
+        destructive
+        onConfirm={handleDelete}
+        loading={deleteMutation.isPending}
+      />
+
+      {/* ponytail: Process result dialog */}
+      <Dialog open={!!processResult} onOpenChange={(open) => !open && setProcessResult(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Process Result</DialogTitle>
+            {processResult?.exportUri && (
+              <DialogDescription>
+                <a
+                  href={processResult.exportUri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline"
+                >
+                  Download report
+                </a>
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap text-sm">{processResult?.summary}</pre>
+        </DialogContent>
+      </Dialog>
     </ErrorBoundary>
   );
 }
