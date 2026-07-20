@@ -79,47 +79,38 @@ export function EntityToolbar({
   processResult,
   onProcessResultClose,
 }: EntityToolbarProps) {
-  // ponytail: ALL actions go inside the ⋮ dropdown — clean toolbar, single entry point
-  // Only the ⋮ button is visible. No primary buttons scattered outside.
-  const hasMenu = actions.length > 0 || menuItems.length > 0 || processes.length > 0;
+  // ponytail: CRUD buttons render directly as visible buttons.
+  // Only Process buttons go into the ⋮ dropdown (they're entity-specific and less frequent).
+  const hasMenu = processes.length > 0 || menuItems.length > 0;
 
   return (
     <>
       <div className="flex items-center gap-2">
+        {/* CRUD buttons — visible directly, not wrapped in dropdown */}
+        {actions.map((action) => (
+          <Button
+            key={action.key}
+            variant={action.variant ?? "outline"}
+            size="sm"
+            onClick={action.onClick}
+            disabled={action.disabled}
+            aria-label={action.label}
+            className="h-8"
+          >
+            {action.loading ? <RefreshCw className="size-4 animate-spin" /> : <action.icon className="size-4" />}
+            <span className="hidden sm:inline">{action.label}</span>
+          </Button>
+        ))}
+
+        {/* ⋮ Process dropdown — only shows if there are processes or custom menu items */}
         {hasMenu && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8" aria-label="Actions">
+              <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Process">
                 <MoreVertical className="size-4" />
-                <span className="hidden sm:inline">Actions</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-48">
-              {/* All actions in the dropdown */}
-              {actions.length > 0 && (
-                <>
-                  {actions.map((action) => (
-                    <DropdownMenuItem
-                      key={action.key}
-                      disabled={action.disabled}
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        action.onClick();
-                      }}
-                      variant={action.variant === "destructive" ? "destructive" : "default"}
-                    >
-                      {action.loading ? (
-                        <RefreshCw className="mr-2 size-4 animate-spin" />
-                      ) : (
-                        <action.icon className="mr-2 size-4" />
-                      )}
-                      {action.label}
-                    </DropdownMenuItem>
-                  ))}
-                  {menuItems.length > 0 || processes.length > 0 ? <DropdownMenuSeparator /> : null}
-                </>
-              )}
-
               {/* Custom menu groups */}
               {menuItems.map((group, gi) => (
                 <React.Fragment key={`menu-${gi}`}>
@@ -145,7 +136,7 @@ export function EntityToolbar({
               {/* Process buttons */}
               {processes.length > 0 && (
                 <>
-                  {actions.length > 0 || menuItems.length > 0 ? <DropdownMenuSeparator /> : null}
+                  {menuItems.length > 0 && <DropdownMenuSeparator />}
                   <DropdownMenuLabel>Process</DropdownMenuLabel>
                   {processes.map((proc) => (
                     <DropdownMenuItem
