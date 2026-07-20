@@ -79,42 +79,26 @@ export function EntityToolbar({
   processResult,
   onProcessResultClose,
 }: EntityToolbarProps) {
-  // ponytail: decide which buttons are "primary" (always visible) vs "overflow" (dropdown only)
-  // Primary = the first 3 actions. Rest go to dropdown.
-  const primaryActions = actions.slice(0, 3);
-  const overflowActions = actions.slice(3);
-  const hasMenu = overflowActions.length > 0 || menuItems.length > 0 || processes.length > 0;
+  // ponytail: ALL actions go inside the ⋮ dropdown — clean toolbar, single entry point
+  // Only the ⋮ button is visible. No primary buttons scattered outside.
+  const hasMenu = actions.length > 0 || menuItems.length > 0 || processes.length > 0;
 
   return (
     <>
       <div className="flex items-center gap-2">
-        {primaryActions.map((action) => (
-          <Button
-            key={action.key}
-            variant={action.variant ?? "outline"}
-            size="sm"
-            onClick={action.onClick}
-            disabled={action.disabled}
-            aria-label={action.label}
-            className="h-8"
-          >
-            {action.loading ? <RefreshCw className="size-4 animate-spin" /> : <action.icon className="size-4" />}
-            <span className="hidden sm:inline">{action.label}</span>
-          </Button>
-        ))}
-
         {hasMenu && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8" aria-label="More actions">
+              <Button variant="outline" size="sm" className="h-8" aria-label="Actions">
                 <MoreVertical className="size-4" />
+                <span className="hidden sm:inline">Actions</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-48">
-              {/* Overflow actions */}
-              {overflowActions.length > 0 && (
+              {/* All actions in the dropdown */}
+              {actions.length > 0 && (
                 <>
-                  {overflowActions.map((action) => (
+                  {actions.map((action) => (
                     <DropdownMenuItem
                       key={action.key}
                       disabled={action.disabled}
@@ -124,7 +108,11 @@ export function EntityToolbar({
                       }}
                       variant={action.variant === "destructive" ? "destructive" : "default"}
                     >
-                      <action.icon className="mr-2 size-4" />
+                      {action.loading ? (
+                        <RefreshCw className="mr-2 size-4 animate-spin" />
+                      ) : (
+                        <action.icon className="mr-2 size-4" />
+                      )}
                       {action.label}
                     </DropdownMenuItem>
                   ))}
@@ -157,7 +145,7 @@ export function EntityToolbar({
               {/* Process buttons */}
               {processes.length > 0 && (
                 <>
-                  {overflowActions.length === 0 && menuItems.length === 0 ? null : <DropdownMenuSeparator />}
+                  {actions.length > 0 || menuItems.length > 0 ? <DropdownMenuSeparator /> : null}
                   <DropdownMenuLabel>Process</DropdownMenuLabel>
                   {processes.map((proc) => (
                     <DropdownMenuItem

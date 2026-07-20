@@ -388,15 +388,20 @@ function EntityFormPageInner({
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          {/* ponytail: CRUD Toolbar — Save | New | Refresh | [⋮ Copy | Delete | Process] */}
-          <EntityToolbar
-            actions={toolbarActions}
-            processes={processes}
-            onProcess={handleProcess}
-            processLoading={processMutation.isPending}
-            processResult={processResult}
-            onProcessResultClose={() => setProcessResult(null)}
-          />
+          {/* ponytail: Cancel/Back navigation + Actions (⋮) dropdown */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild className="h-8">
+              <Link href={parentRoute}>{isEditMode && locked ? "Back" : "Cancel"}</Link>
+            </Button>
+            <EntityToolbar
+              actions={toolbarActions}
+              processes={processes}
+              onProcess={handleProcess}
+              processLoading={processMutation.isPending}
+              processResult={processResult}
+              onProcessResultClose={() => setProcessResult(null)}
+            />
+          </div>
         </div>
         <EntityTabsView
           windowSlug={windowSlug}
