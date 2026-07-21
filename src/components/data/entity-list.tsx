@@ -15,18 +15,13 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { AlertCircle, Download, Plus, RefreshCw, SearchX, Settings2, Trash2 } from "lucide-react";
+import { AlertCircle, Plus, RefreshCw, SearchX, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,6 +35,7 @@ import {
 
 import { buildColumns, TABLE_HIDDEN } from "./entity-columns";
 import { EntityTable } from "./entity-table";
+import { buildGridToolbar, EntityToolbar, type ToolbarButtonHandlers, useToolbarShortcuts } from "./entity-toolbar";
 
 export interface EntityListProps {
   windowSlug: string;
@@ -85,6 +81,7 @@ export function EntityList({
     (searchParams.get("status") as "All" | "Active" | "Inactive") ?? "All",
   );
   const [showBulkDelete, setShowBulkDelete] = React.useState(false);
+  const [showCustomize, setShowCustomize] = React.useState(false);
 
   // ponytail: debounce search — 300ms
   const debouncedSearch = useDebounce(search, 300);
@@ -158,23 +155,20 @@ export function EntityList({
   }, [debouncedSearch, pagination.pageIndex, sorting, statusFilter, router]);
 
   // ── Keyboard shortcuts ────────────────────────────────────
+  // ponytail: "/" focuses search (convenience, not part of ZK shortcuts)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ponytail: ignore if typing in input
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") {
         return;
       }
       if (e.key === "/") {
         e.preventDefault();
         searchInputRef.current?.focus();
-      } else if (e.key === "n" || e.key === "N") {
-        e.preventDefault();
-        router.push(`${basePath}/new`);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router, basePath]);
+  }, []);
 
   // ── Mutations ─────────────────────────────────────────────
   const deleteMut = useBulkDelete(modelName);
@@ -257,6 +251,32 @@ export function EntityList({
     );
   }
 
+  // ponytail: ZK-matching grid toolbar — same pattern as child-tab-grid
+  const listToolbarHandlers: ToolbarButtonHandlers = {
+    onNew: () => router.push(`${basePath}/new`),
+    onRefresh: () => refetch(),
+    onFind: () => searchInputRef.current?.focus(),
+    onDelete: () => setShowBulkDelete(true),
+    onExport: handleExport,
+    onCustomize: () => setShowCustomize(true),
+  };
+  useToolbarShortcuts(listToolbarHandlers);
+
+  const gridButtons = buildGridToolbar(
+    {
+      onAdd: listToolbarHandlers.onNew,
+      onRefresh: listToolbarHandlers.onRefresh,
+      onExport: handleExport,
+      onFind: listToolbarHandlers.onFind,
+      onDelete: () => setShowBulkDelete(true),
+      onCustomize: () => setShowCustomize(true),
+    },
+    {
+      selectedCount,
+      deleting: deleteMut.isPending,
+    },
+  );
+
   return (
     <Card>
       <CardHeader className="border-b has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
@@ -265,7 +285,7 @@ export function EntityList({
           {!isPending && <span className="ml-2 font-normal text-muted-foreground text-sm">({totalCount} total)</span>}
         </CardTitle>
         {description && <CardDescription className="max-w-sm leading-snug">{description}</CardDescription>}
-        <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
+        <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap items-center justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
           <Input
             ref={searchInputRef}
             className="h-7 w-full md:w-64"
@@ -276,12 +296,8 @@ export function EntityList({
               setPagination((p) => ({ ...p, pageIndex: 0 }));
             }}
           />
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download /> Export Page
-          </Button>
-          <Button size="sm" onClick={() => router.push(`${basePath}/new`)}>
-            <Plus /> Add
-          </Button>
+          {/* ponytail: ZK-matching icon-only toolbar (same as detail page + child grids) */}
+          <EntityToolbar buttons={gridButtons} />
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-0">
@@ -308,28 +324,7 @@ export function EntityList({
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Customize">
-                  <Settings2 className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuLabel>Customize View</DropdownMenuLabel>
-                {table
-                  .getAllColumns()
-                  .filter((c) => !TABLE_HIDDEN.has(c.id))
-                  .map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    >
-                      {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* ponytail: Customize is now in the EntityToolbar (ShowMore overflow) */}
           </div>
         </div>
 
@@ -395,6 +390,33 @@ export function EntityList({
         onConfirm={confirmBulkDelete}
         loading={deleteMut.isPending}
       />
+
+      {/* ponytail: Customize dialog — column visibility (matches ZK Customize button + child-tab-grid pattern) */}
+      <Dialog open={showCustomize} onOpenChange={setShowCustomize}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Customize View</DialogTitle>
+            <DialogDescription>Toggle column visibility</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {table
+              .getAllColumns()
+              .filter((c) => !TABLE_HIDDEN.has(c.id))
+              .map((column) => (
+                <div key={column.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`col-${column.id}`}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                  />
+                  <label htmlFor={`col-${column.id}`} className="text-sm">
+                    {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
+                  </label>
+                </div>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
